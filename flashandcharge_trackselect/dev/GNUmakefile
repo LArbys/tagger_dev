@@ -5,7 +5,8 @@ HEADERS = $(filter-out $(FMWKHEADERS), $(wildcard *.h))
 
 INCFLAGS = -g -I. -fPIC
 INCFLAGS += $(shell larlite-config --includes)
-INCFLAGS += $(shell larcv-config --includes) 
+INCFLAGS += $(shell larcv-config --includes)
+INCFLAGS += -I$(LARLITE_BASEDIR)/../
 INCFLAGS += -I$(LARLITE_BASEDIR)/UserDev
 INCFLAGS += -I$(LARLITE_BASEDIR)/UserDev/BasicTool
 INCFLAGS += -I$(LARLITECV_BASEDIR)/app
@@ -22,7 +23,7 @@ LIB=libFQDev.so
 BINARIES = compare_trackq compare_flashmatch
 BINSRCS = $(addsuffix .cxx,$(BINARIES))
 #SOURCES = $(filter-out $(BINSRCS), $(wildcard *.cxx))
-SOURCES = crossingPointsAnaMethods.cxx
+SOURCES = crossingPointsAnaMethods.cxx extractTruthMethods.cxx
 OBJS = $(SOURCES:.cxx=.o)
 
 all: $(LIB) $(BINARIES)
@@ -36,10 +37,10 @@ libFQDev.so: $(OBJS)
 	$(CXX) -shared -o $@ $^ $(LDFLAGS)
 
 compare_trackq: compare_trackq.cxx $(LIB)
-	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS)
+	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS) $(LIB)
 
 compare_flashmatch: compare_flashmatch.cxx $(LIB)
-	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS)
+	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS) $(LIB)
 
 clean:
 	@rm $(BINARIES) *.o $(LIB)
