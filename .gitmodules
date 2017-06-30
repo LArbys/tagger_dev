@@ -1,0 +1,9 @@
+[submodule "flashandcharge_trackselect/larlite"]
+	path = flashandcharge_trackselect/larlite
+	url = https://github.com/larlight/larlite
+[submodule "flashandcharge_trackselect/larlitecv"]
+	path = flashandcharge_trackselect/larlitecv
+	url = https://github.com/larbys/larlitecv
+[submodule "flashandcharge_trackselect/LArCV"]
+	path = flashandcharge_trackselect/LArCV
+	url = https://github.com/larbys/larcv
