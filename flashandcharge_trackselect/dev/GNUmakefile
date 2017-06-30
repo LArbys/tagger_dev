@@ -17,9 +17,12 @@ LDFLAGS += $(shell larlite-config --libs) -lBasicTool_GeoAlgo
 LDFLAGS += $(shell larlitecv-config --libs)
 
 
-all: compare_trackq
+all: compare_trackq compare_flashmatch
 
 compare_trackq: compare_trackq.cxx
+	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS)
+
+compare_flashmatch: compare_flashmatch.cxx
 	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS)
 
 
