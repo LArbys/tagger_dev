@@ -18,6 +18,7 @@ namespace larlitecv{
     float EnuGeV;
     float pos[3];
     float fdwall;
+    bool hasneutrino_vertex; 
 
     // secondary information
     int lepton_boundary;       // index of boundary that lepton end point is nearest

@@ -17,6 +17,7 @@
 
 // larlitecv
 #include "TaggerTypes/dwall.h"
+#include "TaggerTypes/BoundaryMuonTaggerTypes.h"
 
 namespace larlitecv {
 
@@ -68,8 +69,11 @@ namespace larlitecv {
       
       int track_start_boundary = 0;
       float track_start_dwall = larlitecv::dwall( fstart, track_start_boundary );
+      std::string start_crossingname = larlitecv::BoundaryEndNames( (larlitecv::BoundaryEnd_t)track_start_boundary );
+	  
       int track_end_boundary = 0;
       float track_end_dwall = larlitecv::dwall( fend, track_end_boundary );
+      std::string end_crossingname = larlitecv::BoundaryEndNames( (BoundaryEnd_t)track_end_boundary );      
 
       const larlite::mcstep& first_step = track.front();
       const larlite::mcstep& last_step  = track.back();
@@ -90,8 +94,8 @@ namespace larlitecv {
       sce_end[2] = last_step.Z()+end_offset[2];
       Double_t sce_end_xyz[3] = { sce_end[0], sce_end[1], sce_end[2] };
 
-      std::vector< int > start_pix(4); // (row, u-plane, v-plane, y-plane)
-      std::vector< int > end_pix(4); // (row, u-plane, v-plane, y-plane)
+      std::vector< int > start_pix(4,0); // (row, u-plane, v-plane, y-plane)
+      std::vector< int > end_pix(4,0); // (row, u-plane, v-plane, y-plane)
       start_pix[0] = (first_step.T()*1.0e-3 - (ev_trigger->TriggerTime()-4050.0))/0.5 + sce_start[0]/cm_per_tick + 3200;
       end_pix[0]   = (last_step.T()*1.0e-3  - (ev_trigger->TriggerTime()-4050.0))/0.5 + sce_end[0]/cm_per_tick   + 3200;
       for ( size_t p=0; p<3; p++ ) {
@@ -102,6 +106,7 @@ namespace larlitecv {
       float orig_start_tick = (first_step.T()*1.0e-3 - (ev_trigger->TriggerTime()-4050.0))/0.5 + 3200.0;
       float orig_end_tick   = (last_step.T()*1.0e-3  - (ev_trigger->TriggerTime()-4050.0))/0.5 + 3200.0;
       float drift_ticks      = 258.0/cm_per_tick;
+
       bool start_intime = false;
       bool start_crosses = false;
       if ( start_pix[0]>meta.min_y() && start_pix[0]<meta.max_y() ) {
@@ -109,14 +114,7 @@ namespace larlitecv {
 	start_pix[0] = meta.row( start_pix[0] );
 	  
 	if ( track_start_dwall < 10.0 ) {
-
-	  if ( printFlashEnds && track_start_boundary==4 )
-	    std::cout << "Anode Boundary Crossing:   row=" << start_pix[0] << " tick=" << meta.pos_y(start_pix[0]) << " (orig=" << orig_start_tick << ")"
-		      << " pos=(" << first_step.X() << "," << first_step.Y() << "," << first_step.Z() << ")" << std::endl;
-	  else if ( printFlashEnds && track_start_boundary==5 )
-	    std::cout << "Cathode Boundary Crossing: row=" << start_pix[0] << " tick=" << meta.pos_y(start_pix[0]) << " (flash=" << orig_start_tick << " orig=" << orig_start_tick+drift_ticks << ")"
-		      << " pos=(" << first_step.X() << "," << first_step.Y() << "," << first_step.Z() << ")" << std::endl;
-
+	  
 	  // flash match this crossing point
 	  bool found_flash = false;	  
 	  if ( track_start_boundary==4 || track_start_boundary==5 ) {
@@ -140,7 +138,7 @@ namespace larlitecv {
 	    data.flashmatched_true_crossingpoints[ track_start_boundary ]++;
 	  }
 
-	  data.start_pixels.emplace_back( std::move(start_pix) );
+	  data.start_pixels.push_back( start_pix );
 	  data.start_crossingpts.emplace_back( std::move(sce_start) );
 	  data.start_type.push_back( track_start_boundary );
 	  start_crosses = true;
@@ -156,13 +154,7 @@ namespace larlitecv {
 	end_pix[0]   = meta.row( end_pix[0] );
 	if ( track_end_dwall < 10.0 ) {
 
-	  if ( printFlashEnds && track_end_boundary==4 )
-	    std::cout << "Anode Boundary Crossing:   row=" << end_pix[0] << " tick=" << meta.pos_y(end_pix[0]) << " (orig=" << orig_end_tick << ")"
-		      << " pos=(" << last_step.X() << "," << last_step.Y() << "," << last_step.Z() << ")" << std::endl;
-	  else if ( printFlashEnds && track_end_boundary==5 )
-	    std::cout << "Cathode Boundary Crossing: row=" << end_pix[0] << " tick=" << meta.pos_y(end_pix[0])  << " (flash=" << orig_end_tick << " orig=" << orig_end_tick+drift_ticks << ")"
-		      << " pos=(" << last_step.X() << "," << last_step.Y() << "," << last_step.Z() << ")" << std::endl;
-
+	  
 	  // flash match this crossing point
 	  bool found_flash = false;	  
 	  if ( track_end_boundary==4 || track_end_boundary==5 ) {
@@ -178,7 +170,7 @@ namespace larlitecv {
 		break;
 	    }//end of ev_opflash loop
 	  }
-	  else
+	  else	
 	    found_flash = true; // no flash to match for others, but want to count them in array for convenience
 	  
 	  if ( found_flash ) {
@@ -186,15 +178,41 @@ namespace larlitecv {
 	    data.flashmatched_true_crossingpoints[ track_end_boundary ]++;
 	  }
 	  
-	  data.end_pixels.emplace_back( std::move(end_pix) );
+	  data.end_pixels.push_back( end_pix );
 	  data.end_crossingpts.emplace_back( std::move(sce_end) );
 	  data.end_type.push_back( track_end_boundary );
 	  end_crosses = true;
 	  data.tot_true_crossingpoints++;
 	  data.true_crossingpoints[track_end_boundary]++;
 	}
+      }// if end point in image
+
+
+      // we can find the location where muons cross the image boundary
+      if ( !start_intime && end_intime ) {
+	track_start_boundary = larlitecv::ImageEnd;
+	for (int i=1; i<(int)track.size(); i++) {
+	  const auto& step_now = track[i];
+	  const auto& step_back = track[i-1];
+	  
+	}
       }
       
+      if ( printFlashEnds ) {
+	std::cout << "[TRACK]" << std::endl;
+	std::cout << "  Start Boundary Crossing: boundary=" << start_crossingname
+		  << " row=" << start_pix[0] << " tick=" << meta.pos_y(start_pix[0]) << " (orig=" << orig_start_tick << ")"
+		  << " pos=(" << first_step.X() << "," << first_step.Y() << "," << first_step.Z() << ")"
+		  << " dwall=" << track_start_dwall << " intime=" << start_intime 
+		  << std::endl;
+
+	std::cout << "  End Boundary Crossing: boundary=" << end_crossingname
+		  << " row=" << end_pix[0] << " tick=" << meta.pos_y(end_pix[0]) << " (orig=" << orig_end_tick << ")"
+		  << " pos=(" << last_step.X() << "," << last_step.Y() << "," << last_step.Z() << ")"
+		  << " dwall=" << track_end_dwall << " intime=" << end_intime 	  
+		  << std::endl;
+      }
+	
       if ( start_intime || end_intime ) {
 	//intime_cosmics++;
 	if ( start_intime && !start_crosses ) {

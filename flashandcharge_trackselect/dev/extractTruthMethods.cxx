@@ -58,23 +58,39 @@ namespace larlitecv {
 
   void extractVertexTruth( const larlite::event_mctruth& mctruth, TruthData_t& data ) {
     // extract the truth quantities of interest
-    const larlite::mcnu& neutrino = mctruth.at(0).GetNeutrino();
-    data.mode = neutrino.InteractionType();
-    data.current = neutrino.CCNC();
-    data.EnuGeV = neutrino.Nu().Momentum(0).E();
-    const TLorentzVector& nu_pos = neutrino.Nu().Position();
-    std::vector<float> fpos_v(3);
-    std::vector<double> dpos(3);
-    fpos_v[0] = nu_pos.X();
-    fpos_v[1] = nu_pos.Y();
-    fpos_v[2] = nu_pos.Z();
-    data.fdwall = larlitecv::dwall(fpos_v, data.vertex_boundary);
-    for (int i=0; i<3; i++)
-      data.pos[i] = fpos_v[i];
+    // find the neutrino
+    data.hasneutrino_vertex = false;
+    for ( auto const& mct : mctruth ) {
+      const larlite::mcnu& neutrino = mct.GetNeutrino();
+      if ( abs(neutrino.Nu().PdgCode())!=12
+	   && abs(neutrino.Nu().PdgCode())!=14
+	   && abs(neutrino.Nu().PdgCode())!=16 )
+	continue;
+      data.hasneutrino_vertex = true;
+      data.mode = neutrino.InteractionType();
+      data.current = neutrino.CCNC();
+      data.EnuGeV = neutrino.Nu().Momentum(0).E();
+      std::cout << "vertex info: " << data.mode << "," << data.current << "," << data.EnuGeV << "," << neutrino.Nu().PdgCode() <<  std::endl;
+      const TLorentzVector& nu_pos = neutrino.Nu().Position();
+      std::vector<float> fpos_v(3);
+      std::vector<double> dpos(3);
+      fpos_v[0] = nu_pos.X();
+      fpos_v[1] = nu_pos.Y();
+      fpos_v[2] = nu_pos.Z();
+      data.fdwall = larlitecv::dwall(fpos_v, data.vertex_boundary);
+      for (int i=0; i<3; i++)
+	data.pos[i] = fpos_v[i];
+    }
+    if ( !data.hasneutrino_vertex ) {
+      std::cout << "NO NEUTRINO VERTEX" << std::endl;
+    }
   }
 
   void extractLeptonTruth( const larlite::event_mctruth& mctruth_v, const larlite::event_mctrack& mctrack_v, TruthData_t& data ) {
 
+    if ( !data.hasneutrino_vertex )
+      return;
+    
     // get the initial direction of the lepton
     const std::vector<larlite::mcpart>& particles = mctruth_v.at(0).GetParticles();
     bool found_lepton = false;
