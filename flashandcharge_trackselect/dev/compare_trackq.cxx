@@ -32,6 +32,10 @@
 //#include "SCE/SpaceChargeMicroBooNE.h"
 #include "GapChs/EmptyChannelAlgo.h"
 #include "TaggerTypes/BoundaryMuonTaggerTypes.h"
+#include "TaggerTypes/BoundaryEndPt.h"
+#include "TaggerTypes/BoundarySpacePoint.h"
+#include "TaggerTypes/BMTrackCluster3D.h"
+#include "ThruMu/ThruMuTracker.h"
 #include "extractTruthMethods.h"
 #include "crossingPointsAnaMethods.h"
 
@@ -198,9 +202,18 @@ int main( int nargs, char** argv ) {
   
   // // Space Charge Corrections
   // larlitecv::SpaceChargeMicroBooNE sce;
-
+  /// ---------------------------------------------------------------------------------------
+  // ALGO SETUP
+  
   // Empty Channel Algo
   larlitecv::EmptyChannelAlgo emptyalgo;
+
+  // ThruMu Tracker
+  larcv::PSet tracker_pset = pset.get<larcv::PSet>("ThruMuTracker");
+  larlitecv::ThruMuTrackerConfig tracker_cfg = larlitecv::ThruMuTrackerConfig::MakeFromPSet( tracker_pset );
+  larlitecv::ThruMuTracker thrumualgo( tracker_cfg );
+
+  // -----------------------------------------------------------------------------------------
 
   int nentries = dataco[kCROIfile].get_nentries("larcv");
 
@@ -318,7 +331,7 @@ int main( int nargs, char** argv ) {
     // }
 
     const std::vector<larcv::Image2D>& imgs_v   = ev_imgs->Image2DArray();
-    const std::vector<larcv::Image2D>& chstatus_img_v  = ev_badch->Image2DArray();
+    const std::vector<larcv::Image2D>& badch_v  = ev_badch->Image2DArray();
     const std::vector<larcv::Image2D>* segs_v   = NULL;
     if ( ismc ) {
       segs_v = &(ev_segs->Image2DArray());
@@ -402,434 +415,83 @@ int main( int nargs, char** argv ) {
 	std::cout << "  " << spacepoint_producers[i] << ": " << xingptdata.true_crossingpoints[i] << std::endl;
       }
 
+      // loop over MC tracks. Get the truth end points, run thrumu tagger!
+      std::cout << ev_mctrack->size() << " = " << xingptdata.mctrack_imgendpoint_indices.size() << std::endl;
+      for (int itrack=0; itrack<(int)ev_mctrack->size(); itrack++) {
+	// did this track have end points?
+	int nendpts = xingptdata.mctrack_imgendpoint_indices.at(itrack).size();
+	std::cout << "[mc track #" << itrack << "] num end points=" << nendpts << " ";
+	if (nendpts==0) {
+	  std::cout << std::endl;
+	  continue;
+	}
+	std::vector< const larlitecv::BoundarySpacePoint* > mctrack_endpts;
+	int start_index = -1;
+	int end_index = -1;
+	if ( nendpts>0 )
+	  start_index = xingptdata.mctrack_imgendpoint_indices[itrack][0];
+	if ( nendpts>1 )
+	  end_index = xingptdata.mctrack_imgendpoint_indices[itrack][1];
+	larlitecv::BoundarySpacePoint* pstartpt = NULL;
+	larlitecv::BoundarySpacePoint* pendpt   = NULL;
+	if (  start_index!=-1 ) {
+	  // make a boundary space point object for the start;
+	  std::vector< larlitecv::BoundaryEndPt > planepts;
+	  for (int p=0; p<3; p++) {
+	    int row = xingptdata.start_pixels[start_index][0];
+	    int col = xingptdata.start_pixels[start_index][p+1];
+	    if ( col<0 ) col = 0; // hack
+	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)xingptdata.start_type[start_index] );
+	    planepts.emplace_back( std::move(planept) );
+	  }
+	  pstartpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)xingptdata.start_type[start_index], std::move(planepts), imgs_v.front().meta() );
+	  mctrack_endpts.push_back( pstartpt );
+	}
+	if ( end_index!=-1 ) {
+	  // make a boundary space point object for the end;
+	  std::vector< larlitecv::BoundaryEndPt > planepts;
+	  for (int p=0; p<3; p++) {
+	    int row=xingptdata.end_pixels[end_index][0];
+	    int col=xingptdata.end_pixels[end_index][p+1];
+	    if ( col<0 ) col = 0;
+	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)xingptdata.end_type[end_index] );
+	    planepts.emplace_back( std::move(planept) );
+	  }
+	  pendpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)xingptdata.end_type[end_index], std::move(planepts), imgs_v.front().meta() );
+	  mctrack_endpts.push_back( pendpt );
+	}
+	std::cout << " startidx=" << start_index << " endidx=" << end_index << " ";
+
+	std::vector< larlitecv::BMTrackCluster3D > trackclusters;
+	std::vector< larcv::Image2D > tagged_v;
+	std::vector<int> used_endpoints_indices;
+	for ( auto const& img : imgs_v ) {
+	  larcv::Image2D tag( img.meta() );
+	  tag.paint(0);
+	  tagged_v.emplace_back( std::move(tag) );
+	}
+	if ( start_index>=0 && end_index>=0 ) {
+	  std::cout << " start=(" << mctrack_endpts[0]->at(0).row << "," << mctrack_endpts[0]->at(0).col << "," << mctrack_endpts[0]->at(1).col << "," << mctrack_endpts[0]->at(2).col << ")";
+	  std::cout << " end(" << mctrack_endpts[1]->at(0).row << "," << mctrack_endpts[1]->at(0).col << "," << mctrack_endpts[1]->at(1).col << "," << mctrack_endpts[1]->at(2).col << ")";
+	  try {
+	    thrumualgo.makeTrackClusters3D( imgs_v, badch_v, mctrack_endpts, trackclusters, tagged_v, used_endpoints_indices );
+	  }
+	  catch ( std::exception& e ) {
+	    std::cout << std::endl;
+	    std::cout << "  ThruMu Failed: " << e.what() << std::endl;
+	  }
+	}
+	mctrack_endpts.clear();
+
+	std::cout << "tracker return " << trackclusters.size() << " thrumu tracks" << std::endl;
+	
+	delete pstartpt;
+	delete pendpt;
+	std::cout << std::endl;
+      }//end of mctrack loop
+
     }
     
-// // //     if ( ismc ) {
-    
-// // //       // get the vertex in the pixel coordinates
-// // //       std::vector<int> wid(3,-1);
-// // //       std::vector<double> dpos(3);
-// // //       for (int i=0; i<3; i++ ) dpos[i] = truthdata.pos[i];
-// // //       std::vector<double> vtx_offset = sce.GetPosOffsets( dpos[0], dpos[1], dpos[2] );
-
-// // //       for (int i=1; i<3; i++ ) vtx_sce[i] = dpos[i] + vtx_offset[i];
-// // //       vtx_sce[0] = dpos[0] - vtx_offset[0] + 0.7;
-      
-// // //       for (size_t p=0; p<3; p++) {
-// // // 	wid[p] = ::larutil::Geometry::GetME()->WireCoordinate( vtx_sce, p );
-// // // 	if ( wid[p]>=0 && wid[p]<3456 )
-// // // 	  vertex_col[p] = imgs_v.at(p).meta().col(wid[p]);
-// // //       }
-// // //       float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
-// // //       float vertex_tick = vtx_sce[0]/cm_per_tick + 3200.0;
-// // //       if ( vertex_tick >= imgs_v.at(0).meta().min_y() && vertex_tick<=imgs_v.at(0).meta().max_y() )
-// // // 	vertex_row = imgs_v.at(0).meta().row( vertex_tick );
-
-// // //       std::cout << "Vertex Pixel Coordinates (SCE corrected): (" << vertex_row << ", " << vertex_col[0] << "," << vertex_col[1] << "," << vertex_col[2] << ")" << std::endl;
-
-// // //       // did any of the ROIs contain the vertex?
-// // //       vertex_in_croi = 0;
-// // //       for ( auto& roi : containedrois_v ) {
-// // // 	int nplanes_in_roi = 0;
-// // // 	for (size_t p=0; p<3; p++ ) {
-// // // 	  const larcv::ImageMeta& bb = roi.BB( (larcv::PlaneID_t)p );
-// // // 	  if ( vertex_tick>=bb.min_y() && vertex_tick<=bb.max_y() && vertex_col[p]>=bb.min_x() && vertex_col[p]<=bb.max_x() )
-// // // 	    nplanes_in_roi++;
-// // // 	}
-// // // 	if (nplanes_in_roi>=2) {
-// // // 	  vertex_in_croi = 1;
-// // // 	  break;
-// // // 	}
-// // //       }
-
-// // //       // loop over MC tracks, get end points of muons
-// // //       larlitecv::analyzeCrossingMCTracks( xingptdata, imgs_v.front().meta(),  ev_trigger, ev_mctrack, opflash_v, printFlashEnds );
-// // //       // int intime_cosmics = xingptdata.true_intime_thrumu + xingptdata.true_intime_stopmu;
-// // //       // std::cout << "number of intime cosmics: "       << intime_cosmics << std::endl;
-// // //       // std::cout << "number of intime thrumu: "        << xingptdata.true_intime_thrumu << std::endl;
-// // //       // std::cout << "number of intime stopmu: "        << xingptdata.true_intime_stopmu << std::endl;
-// // //       std::cout << "number of true crossing points: " << xingptdata.tot_true_crossingpoints << std::endl;
-// // //       for (int i=0; i<6; i++) {
-// // // 	std::cout << "  " << spacepoint_producers[i] << ": " << xingptdata.true_crossingpoints[i] << std::endl;
-// // //       }
-
-// // //       // make truth pixel counts
-// // //       // count the pixels. determine if cosmic and neutrino are tagged. also if neutrino is in rois
-// // //       // we loop through the rows and cols
-// // //       for (size_t p=0; p<3; p++) {
-	  
-// // // 	// we create a neutrino pixel image, to make things easier downstream
-// // // 	larcv::Image2D nupix_img( imgs_v.at(p).meta() );
-// // // 	nupix_img.paint(0);
-// // // 	for (size_t row=0; row<imgs_v.at(p).meta().rows(); row++) {
-// // // 	  for (size_t col=0; col<imgs_v.at(p).meta().cols(); col++) {
-	      
-// // // 	    // check if this is a pixel of interest
-// // // 	    if ( imgs_v.at(p).pixel(row,col)<fthreshold ) continue;
-	      
-// // // 	    bool near_vertex = false;
-// // // 	    bool is_nu_pix = false;
-	      
-// // // 	    // are we some radius from the vertex?
-// // // 	    if ( (int)row>=vertex_row-fvertex_radius && (int)row<=vertex_row+fvertex_radius
-// // // 		 && (int)col>=vertex_col[p]-fvertex_radius && (int)col<=vertex_col[p]+fvertex_radius ) {
-// // // 	      near_vertex = true;
-// // // 	      nvertex_pixels[p]++;
-// // // 	      nvertex_pixels[3]++;
-// // // 	    }
-	      
-// // // 	    // above threshold. is it a neutrino pixel?
-// // // 	    bool in_seg_image = false;
-// // // 	    int seg_row = -1;
-// // // 	    int seg_col = -1;
-	      
-// // // 	    const larcv::Image2D& segimg = segs_v->at(p);
-// // // 	    float x = imgs_v.at(p).meta().pos_x(col);
-// // // 	    float y = imgs_v.at(p).meta().pos_y(row);
-// // // 	    if ( x>segs_v->at(p).meta().min_x() && x<segs_v->at(p).meta().max_x()
-// // // 		 && y>segs_v->at(p).meta().min_y() && y<segs_v->at(p).meta().max_y() ) {
-// // // 	      in_seg_image = true;
-// // // 	      seg_row = segs_v->at(p).meta().row(y);
-// // // 	      seg_col = segs_v->at(p).meta().col(x);
-// // // 	    }
-
-// // // 	    if ( in_seg_image && segs_v->at(p).pixel(seg_row,seg_col)>0 ) {
-		
-// // // 	      is_nu_pix = true;
-// // // 	      nnu_pixels[p]++;
-// // // 	      nnu_pixels[3]++;
-
-// // // 	      // is the neutrino pixel inside the ROI?
-// // // 	      for ( auto const& cand_roi : containedrois_v ) {
-// // // 		float wired = imgs_v.at(p).meta().pos_x(col);
-// // // 		float tick  = imgs_v.at(p).meta().pos_y(row);
-// // // 		const larcv::ImageMeta& cand_roi_bb = cand_roi.BB().at(p);
-// // // 		if ( cand_roi_bb.min_x()<wired && wired<cand_roi_bb.max_x()
-// // // 		     && cand_roi_bb.min_y()<tick && tick<cand_roi_bb.max_y() )
-// // // 		  {
-// // // 		    nnu_inroi[p]++;
-// // // 		    nnu_inroi[3]++;
-// // // 		  }
-// // // 	      }
-// // // 	    }//if in semgment image
-// // // 	    else {
-// // // 	      // not a neutrino, so cosmic
-// // // 	      ncosmic_pixels[p]++;
-// // // 	      ncosmic_pixels[3]++;
-// // // 	    }//end if cosmic
-	      
-// // // 	    if ( is_nu_pix )
-// // // 	      nupix_img.set_pixel( row, col, 1.0 );
-// // // 	    if ( near_vertex )
-// // // 	      nupix_img.set_pixel( row, col, 10.0 );
-	      
-// // // 	  }//end of col loop
-// // // 	}//end of row loop
-// // // 	nupix_imgs_v.emplace_back( std::move(nupix_img) );
-// // //       }//end of loop over planes for counting neutrino/cosmic pixels
-// // //     }//end of MC Pixel Counts
-      
-// // //     // did any of the ROIs catch neutrino pixels?
-// // //     for ( int r=vertex_row-fvertex_radius; r<=vertex_row+fvertex_radius; r++ ) {
-// // //       if ( r<0 || r>=(int)imgs_v.front().meta().rows() ) continue;
-// // //       for (size_t p=0; p<3; p++) {
-// // // 	const larcv::ImageMeta& meta = imgs_v.at(p).meta();
-// // // 	for ( int c=vertex_col[p]-fvertex_radius; c<=vertex_col[p]+fvertex_radius; c++ ) {
-// // // 	  if ( c<0 || c>=(int)meta.cols() ) continue;
-	  
-// // // 	  // is this a bad ch pixel?
-// // // 	  if ( r==vertex_row && chstatus_img_v.at(p).pixel(r,c)>0 ) {
-// // // 	    nvertex_badch[p]++;
-// // // 	    nvertex_badch[3]++;
-// // // 	  }
-	    
-// // // 	  if ( imgs_v.at(p).pixel(r,c)>fthreshold ) {
-	      
-// // // 	    float wire = meta.pos_x( c );
-// // // 	    float tick = meta.pos_y( r );
-	      
-// // // 	    // a vertex pixel!
-// // // 	    // let's loop over ROIs
-// // // 	    bool inroi = false;
-// // // 	    for ( auto const& croi : containedrois_v ) {
-// // // 	      if ( wire>=croi.BB(p).min_x() && wire<=croi.BB(p).max_x()
-// // // 		   && tick>=croi.BB(p).min_y() && tick<=croi.BB(p).max_y() ) {
-// // // 		inroi = true;
-// // // 		break;
-// // // 	      }
-// // // 	    }
-// // // 	    if ( inroi ) {
-// // // 	      nvertex_incroi[p]++;
-// // // 	      nvertex_incroi[3]++;
-// // // 	    }
-// // // 	  }
-// // // 	}//end of col loop
-// // //       }//end of plane lopp
-// // //     }//end of vertex row loop
-
-// // //     std::cout << "Number of vertex pixels in an ROI: " << nvertex_incroi[3] << " out of " << nvertex_pixels[3] << std::endl;
-// // //     std::cout << "Fraction of vertex pixels are badchannels: " << float(nvertex_badch[3])/float(nvertex_pixels[3]) << std::endl;
-
-// // //     analyzeCrossingDataOnly( xingptdata, ev_spacepoints );
-// // //     analyzeCrossingMatches( xingptdata,  ev_spacepoints, imgs_v.front().meta() );
-    
-// // //     // ==========================================================================================
-
-
-// // //     // non-MC Pixel counting
-// // //     for (size_t p=0; p<3; p++) {
-// // //       for (size_t row=0; row<imgs_v.at(p).meta().rows(); row++) {
-// // // 	for (size_t col=0; col<imgs_v.at(p).meta().cols(); col++) {
-	  
-// // // 	  // check if this is a pixel of interest
-// // // 	  if ( imgs_v.at(p).pixel(row,col)<fthreshold ) continue;
-	    
-// // // 	  nthreshold_pixels[p]++;
-// // // 	  nthreshold_pixels[3]++;
-// // // 	  if ( !ismc ) {
-// // // 	    // if no MC, every pixel is a cosmic pixel
-// // // 	    ncosmic_pixels[p]++;
-// // // 	    ncosmic_pixels[3]++;	    
-// // // 	  }
-// // // 	}
-// // //       }
-// // //     }//end of plane loop
-
-
-// // //     // Loop over track pixels
-// // //     // make left over image
-// // // #ifdef USE_OPENCV
-// // //     std::vector<cv::Mat> cvleftover_v;
-// // //     for ( auto const& img : imgs_v ) {
-// // //       cv::Mat cvimg = larcv::as_mat_greyscale2bgr( img, fthreshold, 100.0 );
-// // //       cvleftover_v.emplace_back(std::move(cvimg));
-// // //     }
-// // // #endif
-
-// // //     // we need an image to mark how times a pixel has been marked
-// // //     std::vector< larcv::Image2D > img_marker_v;
-// // //     for (size_t p=0; p<3; p++) {
-// // //       larcv::Image2D img_counter( imgs_v.at(p).meta() );
-// // //       img_counter.paint(0);
-// // //       img_marker_v.emplace_back( std::move(img_counter) );
-// // //     }
-
-// // //     // loop over tagger stage results
-// // //     for ( int istage=0; istage<kNumStages; istage++ ) {
-// // //       if ( ev_pix[istage]==NULL )
-// // // 	continue;
-// // //       for ( size_t p=0; p<3; p++ ) {
-// // //         // we need images to track the number of times pixels are Tagged
-// // //         larcv::Image2D& img_counter = img_marker_v.at(p);
-// // //         if ( istage==kCROI ) {
-// // //           // we reset the tracker for the CROI pixel counting
-// // //           img_counter.paint(0);
-// // //         }
-
-// // //         for ( auto const& pixcluster : ev_pix[istage]->Pixel2DClusterArray(p) ) {
-	  
-// // //           // for each track cluster, we loop over pixels and store unique pixels by using a set
-// // //           std::set< std::vector<int> > tagged_set;
-// // //           for ( auto const& pix : pixcluster ) {
-	    
-// // //             for ( int dr=-tag_neighborhood; dr<=tag_neighborhood; dr++ ) {
-// // //               int r = pix.Y()+dr;
-// // //               if ( r<0 || r>=(int)imgs_v.at(p).meta().rows() ) continue;
-// // //               for ( int dc=-tag_neighborhood; dc<=tag_neighborhood; dc++ ) {
-// // //                 int c = pix.X()+dc;
-// // //                 if ( c<0 || c>=(int)imgs_v.at(p).meta().cols() ) continue;
-// // //                 if ( imgs_v.at(p).pixel(r,c)<fthreshold ) continue;
-		
-// // //                 std::vector<int> pixel(2);
-// // //                 pixel[0] = c;
-// // //                 pixel[1] = r;
-// // //                 tagged_set.insert( pixel );
-// // //               }
-// // //             }
-// // //           }//end of pixel loop
-// // //           //std::cout << "stage " << istage << " pix in cluster=" << pixcluster.size() << " tagged=" << tagged_set.size() << std::endl;
-	  
-// // //           // we loop over the set, tagging image.  We increment the counter of each pixel.
-// // //           for ( auto const& pix : tagged_set ) {
-// // //             float val = img_counter.pixel( pix[1], pix[0]) + 1.0;
-// // //             img_counter.set_pixel( pix[1], pix[0], val );
-	    
-// // // #ifdef USE_OPENCV
-// // //             // set color of tagged pixel
-// // //             if ( istage==kCROI ) {
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[0] = 255;
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[1] = 0;
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[2] = 255;
-// // //             }
-// // //             else if ( istage==kUntagged ) {
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[0] = 0;
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[1] = 255;
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[2] = 0;
-// // //             }
-// // //             else if ( istage==kThruMu ) {
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[0] = 200;
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[1] = 0;
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[2] = 0;
-// // //             }
-// // //             else if ( istage==kStopMu ) {
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[0] = 0;
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[1] = 0;
-// // //               cvleftover_v.at(p).at<cv::Vec3b>(cv::Point(pix[0],pix[1]))[2] = 200;
-// // //             }
-// // //             else {
-// // //               throw std::runtime_error("oops.");
-// // //             }
-// // // #endif
-// // //           }
-// // //         }//end of pix cluster loop
-	
-// // //         // total the pixels
-// // //         for ( size_t r=0; r<img_counter.meta().rows(); r++) {
-// // //           for ( size_t c=0; c<img_counter.meta().cols(); c++ ) {
-
-// // // 	    if ( imgs_v.at(p).pixel(r,c)<fthreshold ) continue;
-	    
-// // //             // is pixel cosmic or neutrino
-// // // 	    bool isnupix = false;
-// // // 	    bool isvertex = false;
-// // // 	    if ( ismc ) {
-// // // 	      isnupix  = ( nupix_imgs_v.at(p).pixel(r,c)>=1.0  ) ? true : false;
-// // // 	      isvertex = ( nupix_imgs_v.at(p).pixel(r,c)>=10.0 ) ? true : false;
-// // // 	    }
-	    
-// // //             int count = img_counter.pixel( r, c );
-	    
-// // //             if ( count>0 ) {
-// // //               if ( isnupix ) {
-// // //                 nnu_tagged[istage][p]++;
-// // //                 nnu_tagged[istage][3]++;
-// // //               }
-// // //               if ( isvertex ) {
-// // //                 nvertex_tagged[istage][p]++;
-// // //                 nvertex_tagged[istage][3]++;
-// // //               }
-// // //               if ( !isnupix && !isvertex ) {
-// // //                 // is cosmic
-// // //                 ncosmic_tagged[istage][p]++;
-// // //                 ncosmic_tagged[istage][3]++;
-// // //                 if (count==1)  {
-// // //                   ncosmic_tagged_once[istage][p]++;
-// // //                   ncosmic_tagged_once[istage][3]++;
-// // //                 }
-// // //                 else if ( count>1 ) {
-// // //                   ncosmic_tagged_many[istage][p]++;
-// // //                   ncosmic_tagged_many[istage][3]++;
-// // //                 }
-// // //               }
-// // //             }
-// // //           }//end of loop over c of counter image
-// // //         }//loop over rows of counter image
-// // //       }//end of plane loop
-// // //     }//end of stage loop
-    
-// // //     // for the totals for the thrumu/stop/untagged, we want the new amount of pixels tagged, not the aggregate past that stage
-// // //     for ( int istage=kUntagged; istage>kThruMu; istage-- ) {
-// // //       // we save the difference
-// // //       for (int p=0; p<4; p++) {
-// // //         ncosmic_tagged[istage][p]      = ncosmic_tagged[istage][p] - ncosmic_tagged[istage-1][p];
-// // //         ncosmic_tagged_once[istage][p] = ncosmic_tagged_once[istage][p] - ncosmic_tagged_once[istage-1][p];
-// // //         ncosmic_tagged_many[istage][p] = ncosmic_tagged_many[istage][p] - ncosmic_tagged_many[istage-1][p];
-// // //         nnu_tagged[istage][p]          = nnu_tagged[istage][p] - nnu_tagged[istage-1][p];
-// // //         nvertex_tagged[istage][p]      = nvertex_tagged[istage][p] - nvertex_tagged[istage-1][p];
-// // //       }
-// // //     }
-
-
-// // //     //================================================================================
-// // //     // Analyze if a track came close to a vertex
-// // //     if (ismc) {
-// // //       closest_dist_to_vertex = 1.0e6;
-// // //       closest_dist_stage = -1;
-// // //       for (int istage=0; istage<kNumStages; istage++) {
-// // // 	for (int itrack=0; itrack<(int)(ev_track[istage]->size()); itrack++) {
-// // // 	  const larlite::track& t = (*ev_track[istage])[itrack];
-// // // 	  for (int ipt=0; ipt<(int)t.NumberTrajectoryPoints(); ipt++) {
-// // // 	    float dist=0;
-// // // 	    for (int v=0; v<3; v++) {
-// // // 	      float dx = vtx_sce[v]-t.LocationAtPoint(ipt)[v];
-// // // 	      dist += dx*dx;
-// // // 	    }
-// // // 	    dist = sqrt(dist);
-// // // 	    if ( dist<=closest_dist_to_vertex ) {
-// // // 	      closest_dist_to_vertex = dist;
-// // // 	      closest_dist_stage = istage;
-// // // 	    }
-// // // 	  }
-// // // 	}
-// // //       }
-// // //     }
-
-// // //     //================================================================================
-
-// // // #ifdef USE_OPENCV
-// // //     // draw image
-// // //     if ( pset.get<bool>("SaveJPEG") ) {
-// // //       int color_codes[7][3] = { {255,0,0}, // top
-// // // 				{0,0,255}, // bot
-// // // 				{0,255,255}, // upstream
-// // // 				{0,255,0}, // downstream
-// // // 				{255,255,0}, // anode
-// // // 				{255,0,255}, // cathode
-// // // 				{0,128,255} }; // imageend
-// // //       for ( size_t p=0; p<cvleftover_v.size(); p++ ) {
-// // // 	auto& leftover = cvleftover_v.at(p);
-
-// // // 	if ( ismc ) {
-// // // 	  // draw truth end points!
-// // // 	  std::cout << "startpixels=" << xingptdata.start_pixels.size() << " " << xingptdata.start_type.size() << std::endl;
-// // // 	  for ( size_t istart=0; istart<xingptdata.start_type.size(); istart++) {
-// // // 	    auto const& start_pix = xingptdata.start_pixels[istart];
-// // // 	    int i = xingptdata.start_type[istart];
-// // // 	    if ( xingptdata.start_type[istart]<4 )
-// // // 	      cv::circle( leftover, cv::Point(start_pix[p+1],start_pix[0]), 4, cv::Scalar( color_codes[i][0], color_codes[i][1], color_codes[i][2]), 2, -1 );
-// // // 	    else
-// // // 	      cv::rectangle( leftover, cv::Point(start_pix[p+1]-4,start_pix[0]-4), cv::Point(start_pix[p+1]+4,start_pix[0]+4),
-// // // 			     cv::Scalar( color_codes[i][0], color_codes[i][1], color_codes[i][2]), 1 );
-// // // 	  }
-// // // 	  std::cout << "endpixels=" << xingptdata.end_pixels.size() << " " << xingptdata.end_type.size() << std::endl;	
-// // // 	  for ( size_t iend=0; iend<xingptdata.end_type.size(); iend++) {	
-// // // 	    auto const& end_pix = xingptdata.end_pixels[iend];
-// // // 	    int i = xingptdata.end_type[iend];	  
-// // // 	    if ( xingptdata.end_type[iend]<4 )
-// // // 	      cv::circle( leftover, cv::Point(end_pix[p+1],end_pix[0]), 4, cv::Scalar( color_codes[i][0], color_codes[i][1], color_codes[i][2]), 2, -1 );
-// // // 	    else
-// // // 	      cv::rectangle( leftover, cv::Point(end_pix[p+1]-4,end_pix[0]-4), cv::Point(end_pix[p+1]+4,end_pix[0]+4),
-// // // 			     cv::Scalar( color_codes[i][0], color_codes[i][1], color_codes[i][2]), 1 );
-// // // 	  }
-	
-// // // 	  // draw proposed end points
-// // // 	  for ( int i=0; i<7; i++) {
-// // // 	    if ( ev_spacepoints[i]==NULL )
-// // // 	      continue;
-// // // 	    for ( auto const& endpt : ev_spacepoints[i]->Pixel2DArray(p) ) {
-// // // 	      cv::drawMarker( leftover, cv::Point(endpt.X(), endpt.Y()),  cv::Scalar( color_codes[i][0], color_codes[i][1], color_codes[i][2]), cv::MARKER_CROSS, 6, 2);
-// // // 	    }
-// // // 	  }
-
-// // // 	  // sce vertex
-// // // 	  cv::circle( leftover, cv::Point(vertex_col[p],vertex_row), 4, cv::Scalar(0,0,255),   2, -1 );
-// // // 	  cv::circle( leftover, cv::Point(vertex_col[p],vertex_row), 3, cv::Scalar(0,255,255), 1, -1 );      
-
-// // // 	}
-
-// // // 	// draw roi
-// // // 	for ( auto const& roi : containedrois_v ) {
-// // // 	  larcv::draw_bb( leftover, imgs_v.front().meta(), roi.BB(p), 255, 0, 255, 2 );
-// // // 	}
-
-      
-// // // 	std::stringstream ss;
-// // // 	ss << "leftover_clust_i" << ientry << "_r" << run << "_s" << subrun << "_e" << event << "_p" << p << ".jpg";
-// // // 	std::cout << "write: " << ss.str() << std::endl;
-// // // 	cv::imwrite( ss.str(), leftover );
-// // //       }
-// //     }
-// // #endif
 
     tree->Fill();
     break;

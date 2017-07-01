@@ -28,6 +28,7 @@ namespace larlite {
 namespace larlitecv {
 
   class SpaceChargeMicroBooNE;
+
   
   struct CrossingPointAnaData_t {
     int tot_proposed_crossingpoints; //< total crossing points
@@ -52,6 +53,9 @@ namespace larlitecv {
     std::vector< std::vector<int> > end_pixels;
     std::vector< std::vector<float> > end_crossingpts;
     bool saved_mc;
+
+    // MC track end points
+    std::vector< std::vector<int> > mctrack_imgendpoint_indices; // index is mc track index. -1 or size 0 means there are no image end points
     
     CrossingPointAnaData_t() {
       clear();
@@ -77,6 +81,7 @@ namespace larlitecv {
       start_crossingpts.clear();
       end_pixels.clear();
       end_crossingpts.clear();
+      mctrack_imgendpoint_indices.clear();
       saved_mc = false;
     };
 

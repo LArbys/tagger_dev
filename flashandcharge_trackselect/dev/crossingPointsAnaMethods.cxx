@@ -56,8 +56,12 @@ namespace larlitecv {
 
     larlitecv::SpaceChargeMicroBooNE sce;
     const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;    
-    
+
+    data.mctrack_imgendpoint_indices.resize( ev_mctrack->size() );
+    int trackindex = -1;
     for ( auto const& track : *ev_mctrack ) {
+      trackindex++;
+      
       if ( std::abs(track.PdgCode())!=13  ) continue; // skip muons for now
       if ( track.size()==0 ) continue;
       const TLorentzVector& track_start = track.front().Position();
@@ -190,7 +194,14 @@ namespace larlitecv {
 	}//if end point dwall < 10.0
       }// if end point in image
 
-
+      if ( start_intime || end_intime ) {
+	data.mctrack_imgendpoint_indices[trackindex].resize(2,-1);
+	if ( start_intime )
+	  data.mctrack_imgendpoint_indices[trackindex][0] = data.start_pixels.size()-1;
+	if ( end_intime )
+	  data.mctrack_imgendpoint_indices[trackindex][1] = data.start_pixels.size()-1;	  
+      }
+      
       // we can find the location where muons cross the image boundary
       bool crosses_boundary = doesTrackCrossImageBoundary( track, meta, ev_trigger->TriggerTime(), &sce );
       if ( crosses_boundary ) {
@@ -206,6 +217,7 @@ namespace larlitecv {
 	  end_crosses = true;
 	  data.tot_true_crossingpoints++;
 	  data.true_crossingpoints[track_end_boundary]++;
+	  data.mctrack_imgendpoint_indices[trackindex][1] = data.end_pixels.size()-1;	  
 	}
 	else if ( end_intime && !start_intime ) {
 	  // so start crosses
@@ -217,6 +229,7 @@ namespace larlitecv {
 	  start_crosses = true;
 	  data.tot_true_crossingpoints++;
 	  data.true_crossingpoints[track_start_boundary]++;
+	  data.mctrack_imgendpoint_indices[trackindex][0] = data.start_pixels.size()-1;	  	  
 	}
 	else {
 	  std::stringstream msg;
