@@ -31,7 +31,7 @@
 #include "Base/DataCoordinator.h"
 //#include "SCE/SpaceChargeMicroBooNE.h"
 #include "GapChs/EmptyChannelAlgo.h"
-//#include "TaggerTypes/dwall.h"
+#include "TaggerTypes/BoundaryMuonTaggerTypes.h"
 #include "extractTruthMethods.h"
 #include "crossingPointsAnaMethods.h"
 
@@ -397,7 +397,8 @@ int main( int nargs, char** argv ) {
       // loop over MC tracks, get end points of muons
       larlitecv::analyzeCrossingMCTracks( xingptdata, imgs_v.front().meta(),  ev_trigger, ev_mctrack, opflash_v, printFlashEnds );
       int intime_cosmics = xingptdata.true_intime_thrumu + xingptdata.true_intime_stopmu;
-      for (int i=0; i<6; i++) {
+      std::cout << "End points from MC Truth" << std::endl;
+      for (int i=0; i<larlitecv::kNumEndTypes; i++) {
 	std::cout << "  " << spacepoint_producers[i] << ": " << xingptdata.true_crossingpoints[i] << std::endl;
       }
 

@@ -30,9 +30,9 @@ namespace larlitecv {
     tree->Branch( "tot_flashmatched_true_crossingpoints", &tot_flashmatched_true_crossingpoints, "tot_flashmatched_true_crossingpoints/I" );
     tree->Branch( "tot_matched_crossingpoints", &tot_matched_crossingpoints, "tot_matched_crossingpoints/I" );    
     tree->Branch( "proposed_crossingpoints", proposed_crossingpoints, "proposed_crossingpoints[7]/I" );
-    tree->Branch( "true_crossingpoints",     true_crossingpoints, "true_crossingpoints[6]/I" );
-    tree->Branch( "flashmatched_true_crossingpoints", flashmatched_true_crossingpoints, "flashmatched_true_crossingpoints[6]/I" );
-    tree->Branch( "matched_crossingpoints",  matched_crossingpoints, "matched_crossingpoints[6]/I" );
+    tree->Branch( "true_crossingpoints",     true_crossingpoints, "true_crossingpoints[7]/I" );
+    tree->Branch( "flashmatched_true_crossingpoints", flashmatched_true_crossingpoints, "flashmatched_true_crossingpoints[7]/I" );
+    tree->Branch( "matched_crossingpoints",  matched_crossingpoints, "matched_crossingpoints[7]/I" );
     tree->Branch( "true_intime_thrumu",      &true_intime_thrumu,     "true_intime_thrumu/I");
     tree->Branch( "true_intime_stopmu",      &true_intime_stopmu,     "true_intime_stopmu/I");
   }
@@ -147,8 +147,8 @@ namespace larlitecv {
 	  start_crosses = true;
 	  data.tot_true_crossingpoints++;
 	  data.true_crossingpoints[track_start_boundary]++;
-	}
-      }
+	}//if dwall<0
+      }// if start in time
       
       bool end_intime = false;
       bool end_crosses = false;
@@ -187,7 +187,7 @@ namespace larlitecv {
 	  end_crosses = true;
 	  data.tot_true_crossingpoints++;
 	  data.true_crossingpoints[track_end_boundary]++;
-	}
+	}//if end point dwall < 10.0
       }// if end point in image
 
 
@@ -196,7 +196,7 @@ namespace larlitecv {
       if ( crosses_boundary ) {
 	std::vector< float > crossingpt(3,0);
 	std::vector<int> crossing_imgcoords = getImageBoundaryCrossingPoint( track, crossingpt, meta, 20.0, ev_trigger->TriggerTime(), &sce );
-	if ( start_intime ) {
+	if ( start_intime && !end_intime) {
 	  // so end crosses
 	  track_end_boundary = larlitecv::kImageEnd;
 	  end_crossingname = "ImageEnd";
@@ -207,7 +207,7 @@ namespace larlitecv {
 	  data.tot_true_crossingpoints++;
 	  data.true_crossingpoints[track_end_boundary]++;
 	}
-	else if ( end_intime ) {
+	else if ( end_intime && !start_intime ) {
 	  // so start crosses
 	  track_start_boundary = larlitecv::kImageEnd;
 	  start_crossingname = "ImageEnd";	  

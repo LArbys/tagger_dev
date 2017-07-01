@@ -6,6 +6,9 @@
 // larlite
 #include "DataFormat/opflash.h"
 
+// larlitecv
+#include "TaggerTypes/BoundaryMuonTaggerTypes.h"
+
 class TTree;
 
 namespace larcv {
@@ -31,13 +34,13 @@ namespace larlitecv {
     int proposed_crossingpoints[7];  //< total proposed for each type [top,bot,up,down,anode,cathod,imgends]
 
     int tot_true_crossingpoints;
-    int true_crossingpoints[6];
+    int true_crossingpoints[7];
 
     int tot_flashmatched_true_crossingpoints;
-    int flashmatched_true_crossingpoints[6];
+    int flashmatched_true_crossingpoints[7];
 
     int tot_matched_crossingpoints;
-    int matched_crossingpoints[6];
+    int matched_crossingpoints[7];
 
     int true_intime_stopmu;
     int true_intime_thrumu;
@@ -59,7 +62,7 @@ namespace larlitecv {
       tot_true_crossingpoints = 0;
       tot_matched_crossingpoints = 0;
       tot_flashmatched_true_crossingpoints = 0;
-      for (int i=0; i<6; i++){
+      for (int i=0; i<larlitecv::kNumEndTypes; i++){
 	proposed_crossingpoints[i] = 0;
 	true_crossingpoints[i] = 0;
 	matched_crossingpoints[i] = 0;
