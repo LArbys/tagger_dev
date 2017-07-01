@@ -22,3 +22,4 @@ source $FQ_TAGGERDEV_BASEDIR/LArCV/configure.sh
 # setup larlitecv
 source $FQ_TAGGERDEV_BASEDIR/larlitecv/configure.sh
 
+export LD_LIBRARY_PATH=.:${LD_LIBRARY_PATH}

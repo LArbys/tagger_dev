@@ -2,22 +2,30 @@
 #define __crossingPointsAnaMethods_h__
 
 #include <vector>
+
+// larlite
 #include "DataFormat/opflash.h"
 
 class TTree;
 
 namespace larcv {
   class EventPixel2D;
+  class Image2D;
   class ImageMeta;
 }
 
 namespace larlite {
   class trigger;
   class event_mctrack;
+  class mcstep;
+  class mctrack;
 }
+
 
 namespace larlitecv {
 
+  class SpaceChargeMicroBooNE;
+  
   struct CrossingPointAnaData_t {
     int tot_proposed_crossingpoints; //< total crossing points
     int proposed_crossingpoints[7];  //< total proposed for each type [top,bot,up,down,anode,cathod,imgends]
@@ -81,6 +89,13 @@ namespace larlitecv {
   void analyzeCrossingDataOnly( CrossingPointAnaData_t& data, std::vector<larcv::EventPixel2D*>& ev_spacepoints );  
 
   void analyzeCrossingMatches( CrossingPointAnaData_t& data, std::vector<larcv::EventPixel2D*> ev_spacepoints, const larcv::ImageMeta& meta );  
+
+  float getTick( const larlite::mcstep& step, const float trig_time=4050.0, const larlitecv::SpaceChargeMicroBooNE* psce=NULL );
+
+  bool doesTrackCrossImageBoundary( const larlite::mctrack& track, const larcv::ImageMeta& meta, const float trig_time, const larlitecv::SpaceChargeMicroBooNE* psce );
+
+  std::vector<int> getImageBoundaryCrossingPoint( const larlite::mctrack& track, std::vector<float>& crossingpt, const larcv::ImageMeta& meta,
+						  const float boundary_tick_buffer, const float trig_time, const larlitecv::SpaceChargeMicroBooNE* psce );
   
 }
 
