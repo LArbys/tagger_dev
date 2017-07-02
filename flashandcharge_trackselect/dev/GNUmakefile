@@ -13,6 +13,7 @@ INCFLAGS += -I$(LARLITECV_BASEDIR)/app
 INCFLAGS += $(shell larlitecv-config --includes)
 INCFLAGS += -I$(LARCV_BASEDIR)/app/ann_1.1.2/include
 INCFLAGS += `root-config --cflags`
+INCFLAGS += -DUSE_OPENCV=1
 
 LDFLAGS += $(shell larcv-config --libs)
 LDFLAGS += $(shell larlite-config --libs) -lBasicTool_GeoAlgo

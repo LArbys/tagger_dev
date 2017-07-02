@@ -35,17 +35,18 @@
 #include "TaggerTypes/BoundaryEndPt.h"
 #include "TaggerTypes/BoundarySpacePoint.h"
 #include "TaggerTypes/BMTrackCluster3D.h"
+#include "TaggerTypes/Path2Pixels.h"
 #include "ThruMu/ThruMuTracker.h"
 #include "extractTruthMethods.h"
 #include "crossingPointsAnaMethods.h"
 
 
 // OpenCV
-// #ifdef USE_OPENCV
-// #include <opencv2/opencv.hpp>
-// #include <opencv2/core/core.hpp>
-// #include "CVUtil/CVUtil.h"
-// #endif
+#ifdef USE_OPENCV
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/core.hpp>
+#include "CVUtil/CVUtil.h"
+#endif
 
 
 // larlitecv
@@ -103,8 +104,13 @@ int main( int nargs, char** argv ) {
   std::string trigname   = pset.get<std::string>("TriggerProducerName");
   std::vector<std::string> flashprod  = pset.get<std::vector<std::string> >("OpFlashProducer");  
   bool printFlashEnds    = pset.get<bool>("PrintFlashEnds");
+  bool printImages       = pset.get<bool>("PrintImages");
+  float fthreshold       = pset.get<float>("PixelThreshold");
+  std::vector<float> thresholds_v( 3, fthreshold );
+  std::vector<float> label_thresholds_v( 3, -10 );  
+  std::vector<int> label_neighborhood(3,0);
+  
   // bool use_reclustered   = pset.get<bool>("UseReclustered");
-  // float fthreshold       = pset.get<float>("PixelThreshold");
   // int tag_neighborhood   = pset.get<int>("TagNeighborhood",10);
   // int fvertex_radius     = pset.get<int>("PixelRadius");  
 
@@ -296,7 +302,7 @@ int main( int nargs, char** argv ) {
       ev_badch = new larcv::EventImage2D;
       ev_badch->Emplace( std::move(chstatus_img_v) );
     }
-
+    
     // // get the output of the tagger
     // larcv::EventPixel2D* ev_pix[kNumStages] = {0};
     // larlite::event_track* ev_track[kNumStages] = {0};
@@ -337,6 +343,16 @@ int main( int nargs, char** argv ) {
       segs_v = &(ev_segs->Image2DArray());
     }
 
+#ifdef USE_OPENCV
+    std::vector<cv::Mat> cvimgs_v;    
+    if ( printImages ) {
+      for ( auto const& img : imgs_v ) {
+	cv::Mat cvimg = larcv::as_mat_greyscale2bgr( img, fthreshold, 100.0 );
+	cvimgs_v.emplace_back(std::move(cvimg));
+      }
+    }
+#endif
+    
     // // get the result of the contained ROI analysis
     // larcv::EventROI* ev_contained_roi = NULL;
     // try {
@@ -382,7 +398,7 @@ int main( int nargs, char** argv ) {
     larlite::event_mctruth* ev_mctruth   = NULL;
     larlite::event_mctrack* ev_mctrack   = NULL;
     larlite::event_mcshower* ev_mcshower = NULL; 
-   larlite::trigger* ev_trigger         = (larlite::trigger*) dataco[kSource].get_larlite_data(larlite::data::kTrigger,trigname);
+    larlite::trigger* ev_trigger         = (larlite::trigger*) dataco[kSource].get_larlite_data(larlite::data::kTrigger,trigname);
     if ( ismc ) {
       ev_mctruth = (larlite::event_mctruth*) dataco[kSource].get_larlite_data(larlite::data::kMCTruth,"generator");
       ev_mctrack = (larlite::event_mctrack*) dataco[kSource].get_larlite_data(larlite::data::kMCTrack,"mcreco");
@@ -417,6 +433,7 @@ int main( int nargs, char** argv ) {
 
       // loop over MC tracks. Get the truth end points, run thrumu tagger!
       std::cout << ev_mctrack->size() << " = " << xingptdata.mctrack_imgendpoint_indices.size() << std::endl;
+      std::vector< larlitecv::BMTrackCluster3D > mc_recotracks;
       for (int itrack=0; itrack<(int)ev_mctrack->size(); itrack++) {
 	// did this track have end points?
 	int nendpts = xingptdata.mctrack_imgendpoint_indices.at(itrack).size();
@@ -475,6 +492,9 @@ int main( int nargs, char** argv ) {
 	  std::cout << " end(" << mctrack_endpts[1]->at(0).row << "," << mctrack_endpts[1]->at(0).col << "," << mctrack_endpts[1]->at(1).col << "," << mctrack_endpts[1]->at(2).col << ")";
 	  try {
 	    thrumualgo.makeTrackClusters3D( imgs_v, badch_v, mctrack_endpts, trackclusters, tagged_v, used_endpoints_indices );
+	    if ( trackclusters.size()>0 ) {
+	      mc_recotracks.emplace_back( std::move(trackclusters.at(0)) );
+	    }
 	  }
 	  catch ( std::exception& e ) {
 	    std::cout << std::endl;
@@ -490,9 +510,59 @@ int main( int nargs, char** argv ) {
 	std::cout << std::endl;
       }//end of mctrack loop
 
+#ifdef USE_OPENCV
+      // draw start points
+      for ( int ipt=0; ipt<(int)xingptdata.start_pixels.size(); ipt++) {
+	int row=xingptdata.start_pixels[ipt][0];
+	if (row<0) row = 0;
+	if (row>=(int)imgs_v.front().meta().rows() ) row = (int)imgs_v.front().meta().rows()-1;
+	for (int p=0; p<3; p++) {
+	  int col = xingptdata.start_pixels[ipt][p+1];
+	  if ( col<0 ) col = 0;
+	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
+	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0, 0, 255, 255 ), -1 );
+	}
+      }
+      // draw end points
+      for ( int ipt=0; ipt<(int)xingptdata.end_pixels.size(); ipt++) {
+	int row=xingptdata.end_pixels[ipt][0];
+	if (row<0) row = 0;
+	if (row>=(int)imgs_v.front().meta().rows() ) row = (int)imgs_v.front().meta().rows()-1;
+	for (int p=0; p<3; p++) {
+	  int col = xingptdata.end_pixels[ipt][p+1];
+	  if ( col<0 ) col = 0;
+	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
+	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 0, 0, 255 ), -1 );
+	}
+      }
+      // draw tracks
+      
+      for (auto const& track : mc_recotracks ) {
+	std::vector<larcv::Pixel2DCluster> plane_pixels = larlitecv::getTrackPixelsFromImages( track.path3d,  imgs_v, badch_v, label_thresholds_v, label_neighborhood, 0.3 );
+	int p=-1;
+	for ( auto const& pixs : plane_pixels ) {
+	  p++;
+	  for ( auto const& pix : pixs ) {
+	    cv::circle( cvimgs_v[p], cv::Point( pix.X(), pix.Y() ), 1, cv::Scalar( 0, 200, 0, 200 ), -1 );
+	  }
+	}
+      }
+      
+#endif
+      
+    } // end of MC functions   
+
+#ifdef USE_OPENCV
+
+    for (int p=0; p<3; p++) {
+      cv::Mat& cvimg = cvimgs_v[p];
+      std::stringstream path;
+      path << "trackqimgs/tracks_r" << run << "_s" << subrun << "_e" << event << "_p" << p << ".png";
+      cv::imwrite( path.str(), cvimg );
     }
     
-
+#endif
+    
     tree->Fill();
     break;
   }//end of entry loop

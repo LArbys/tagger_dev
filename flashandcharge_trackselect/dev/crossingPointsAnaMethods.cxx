@@ -199,7 +199,7 @@ namespace larlitecv {
 	if ( start_intime )
 	  data.mctrack_imgendpoint_indices[trackindex][0] = data.start_pixels.size()-1;
 	if ( end_intime )
-	  data.mctrack_imgendpoint_indices[trackindex][1] = data.start_pixels.size()-1;	  
+	  data.mctrack_imgendpoint_indices[trackindex][1] = data.end_pixels.size()-1;	  
       }
       
       // we can find the location where muons cross the image boundary
@@ -240,7 +240,7 @@ namespace larlitecv {
       }//end of image end crossings
       
       if ( printFlashEnds ) {
-	std::cout << "[TRACK]" << std::endl;
+	std::cout << "[TRACK #" << trackindex << "] nstart=" << data.start_pixels.size() << " nend=" << data.end_pixels.size() << std::endl;
 	std::cout << "  Start Boundary Crossing: boundary=" << start_crossingname
 		  << " row=" << start_pix[0] << " tick=" << meta.pos_y(start_pix[0]) << " (orig=" << orig_start_tick << ")"
 		  << " pos=(" << first_step.X() << "," << first_step.Y() << "," << first_step.Z() << ")";
