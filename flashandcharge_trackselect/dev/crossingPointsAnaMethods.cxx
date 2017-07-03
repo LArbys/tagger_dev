@@ -64,15 +64,28 @@ namespace larlitecv {
       
       if ( std::abs(track.PdgCode())!=13  ) continue; // skip muons for now
       if ( track.size()==0 ) continue;
-      const TLorentzVector& track_start = track.front().Position();
-      std::vector<float> fstart(3,0);
-      fstart[0] = track_start.X();
-      fstart[1] = track_start.Y();
-      fstart[2] = track_start.Z();
-      std::vector<float> fend(3,0);
-      fend[0]   = track.back().Position().X();
-      fend[1]   = track.back().Position().Y();
-      fend[2]   = track.back().Position().Z();
+      const larlite::mcstep& first_step = track.front();
+      const larlite::mcstep& last_step  = track.back();
+
+      float tick_start = getTick( first_step, ev_trigger->TriggerTime(), &sce );
+      float tick_end   = getTick( last_step,  ev_trigger->TriggerTime(), &sce );
+
+      if ( tick_start<meta.min_y() && tick_end<meta.min_y() ) {
+	std::cout << "[TRACK #" << trackindex << "] before the image time region." << std::endl;
+	continue;
+      }
+      if ( tick_start>meta.max_y() && tick_end>meta.max_y() ) {
+	std::cout << "[TRACK #" << trackindex << "] after the image time region." << std::endl;
+	continue;
+      }
+	
+      std::vector<float> fstart = getFirstStepPosInsideImage( track, meta, ev_trigger->TriggerTime(), true, 0.15, 10.0, &sce );
+      std::vector<float> fend   = getFirstStepPosInsideImage( track, meta, ev_trigger->TriggerTime(), false, 0.15, 10.0, &sce );
+
+      if ( fstart.size()==0 || fend.size()==0 ) {
+	std::cout << "[TRACK #" << trackindex << "] no part of track inside image." << std::endl;
+	continue;
+      }
       
       int track_start_boundary = 0;
       float track_start_dwall = larlitecv::dwall( fstart, track_start_boundary );
@@ -82,8 +95,6 @@ namespace larlitecv {
       float track_end_dwall = larlitecv::dwall( fend, track_end_boundary );
       std::string end_crossingname = larlitecv::BoundaryEndNames( (BoundaryEnd_t)track_end_boundary );      
 
-      const larlite::mcstep& first_step = track.front();
-      const larlite::mcstep& last_step  = track.back();
 
       // space charge corrections
       std::vector<double> start_offset = sce.GetPosOffsets( first_step.X(), first_step.Y(), first_step.Z() );
@@ -93,6 +104,7 @@ namespace larlitecv {
       sce_start[0] = first_step.X()-start_offset[0]+0.7;
       sce_start[1] = first_step.Y()+start_offset[1];
       sce_start[2] = first_step.Z()+start_offset[2];
+      std::cout << "x-offset: true-x=" << first_step.X() << " -> offset " << start_offset[0] << std::endl;
       Double_t sce_start_xyz[3] = { sce_start[0], sce_start[1], sce_start[2] };
 
       std::vector<float> sce_end(3);
@@ -116,33 +128,31 @@ namespace larlitecv {
 
       bool start_intime = false;
       bool start_crosses = false;
+      bool start_found_flash = false;	        
       if ( start_pix[0]>meta.min_y() && start_pix[0]<meta.max_y() ) {
 	start_intime = true;
 	start_pix[0] = meta.row( start_pix[0] );
 	  
-	if ( track_start_dwall < 10.0 ) {
+	if ( track_start_dwall < 20.0 ) {
 	  
 	  // flash match this crossing point
-	  bool found_flash = false;	  
 	  if ( track_start_boundary==4 || track_start_boundary==5 ) {
 	    for ( auto const& ev_opflash : opflash_v ) {
 	      for ( auto const& opflash : *ev_opflash ) {
-		if ( found_flash )
+		if ( start_found_flash )
 		  break;		
 		if ( fabs( orig_start_tick - (3200.0+opflash.Time()/0.5) )<5.0 ) {
-		  found_flash = true;
+		  start_found_flash = true;
 		}
 	      }
-	      if ( found_flash )
+	      if ( start_found_flash )
 		break;
 	    }//end of ev_opflash loop
-	  }
-	  else
-	    found_flash = true; // no flash to match for others, but want to count them in array for convenience
 
-	  if ( found_flash ) {
-	    data.tot_flashmatched_true_crossingpoints++;
-	    data.flashmatched_true_crossingpoints[ track_start_boundary ]++;
+	    if ( start_found_flash ) {
+	      data.tot_flashmatched_true_crossingpoints++;
+	      data.flashmatched_true_crossingpoints[ track_start_boundary ]++;
+	    }
 	  }
 
 	  data.start_pixels.push_back( start_pix );
@@ -156,33 +166,31 @@ namespace larlitecv {
       
       bool end_intime = false;
       bool end_crosses = false;
+      bool end_found_flash = false;	        
       if ( end_pix[0]>meta.min_y() && end_pix[0]<meta.max_y() ) {
 	end_intime = true;
 	end_pix[0]   = meta.row( end_pix[0] );
-	if ( track_end_dwall < 10.0 ) {
+	if ( track_end_dwall < 20.0 ) {
 
 	  
 	  // flash match this crossing point
-	  bool found_flash = false;	  
 	  if ( track_end_boundary==4 || track_end_boundary==5 ) {
 	    for ( auto const& ev_opflash : opflash_v ) {
 	      for ( auto const& opflash : *ev_opflash ) {
-		if ( found_flash )
+		if ( end_found_flash )
 		  break;		
 		if ( fabs( orig_end_tick - (3200.0+opflash.Time()/0.5) )<5.0 ) {
-		  found_flash = true;
+		  end_found_flash = true;
 		}
 	      }
-	      if ( found_flash )
+	      if ( end_found_flash )
 		break;
 	    }//end of ev_opflash loop
-	  }
-	  else	
-	    found_flash = true; // no flash to match for others, but want to count them in array for convenience
 	  
-	  if ( found_flash ) {
-	    data.tot_flashmatched_true_crossingpoints++;
-	    data.flashmatched_true_crossingpoints[ track_end_boundary ]++;
+	    if ( end_found_flash ) {
+	      data.tot_flashmatched_true_crossingpoints++;
+	      data.flashmatched_true_crossingpoints[ track_end_boundary ]++;
+	    }
 	  }
 	  
 	  data.end_pixels.push_back( end_pix );
@@ -196,9 +204,9 @@ namespace larlitecv {
 
       if ( start_intime || end_intime ) {
 	data.mctrack_imgendpoint_indices[trackindex].resize(2,-1);
-	if ( start_intime )
+	if ( start_intime && start_crosses )
 	  data.mctrack_imgendpoint_indices[trackindex][0] = data.start_pixels.size()-1;
-	if ( end_intime )
+	if ( end_intime && end_crosses )
 	  data.mctrack_imgendpoint_indices[trackindex][1] = data.end_pixels.size()-1;	  
       }
       
@@ -259,12 +267,18 @@ namespace larlitecv {
 	
 	std::cout << " dwall=" << track_end_dwall << " intime=" << end_intime 	  
 		  << std::endl;
+	if ( track_start_boundary==larlitecv::kAnode || track_start_boundary==larlitecv::kCathode )
+	  std::cout  << "  Found start flash: " << start_found_flash << std::endl;
+	if ( track_end_boundary==larlitecv::kAnode || track_end_boundary==larlitecv::kCathode )
+	  std::cout  << "  Found end flash: " << end_found_flash << std::endl;
       }
 	
       if ( start_intime || end_intime ) {
 	//intime_cosmics++;
 	if ( start_intime && !start_crosses ) {
 	  std::cout << "start point does not cross boundary: (" << fstart[0] << "," << fstart[1] << "," << fstart[2] << ")"
+		    << " true start: (" << track.front().X() << "," << track.front().Y() << "," << track.front().Z() << ") t=" << track.front().T()
+		    << " tick = " << getTick( track.front(), ev_trigger->TriggerTime(), &sce )
 		    << " dwall=" << track_start_dwall << " intime=" << start_intime
 		    << " tick=" << meta.pos_y( start_pix[0] )
 		    << " row=" << start_pix[0]
@@ -488,23 +502,110 @@ namespace larlitecv {
     return empty;
   }
   
+
   float getTick( const larlite::mcstep& step, const float trig_time, const larlitecv::SpaceChargeMicroBooNE* psce ) {
+    std::vector<float> pos(4,0);
+    pos[0] = step.T();
+    pos[1] = step.X();
+    pos[2] = step.Y();
+    pos[3] = step.Z();
+    return getTick( pos, trig_time, psce );
+  }
+  
+
+  float getTick( const std::vector<float>& step, const float trig_time, const larlitecv::SpaceChargeMicroBooNE* psce ) {    
     // Function returns the tick time of a MC step point
     // if SCE pointer is null, we do not correct for the space charge
     
     std::vector<double> dpos(3,0);
     if ( psce ) {
-      std::vector<double> pos_offset = psce->GetPosOffsets( step.X(), step.Y(), step.Z() );
-      dpos[0] = step.X() - pos_offset[0] + 0.7;
+      std::vector<double> pos_offset = psce->GetPosOffsets( step[1], step[2], step[3] );
+      dpos[0] = step[1] - pos_offset[1] + 0.7;
     }
     else {
-      dpos[0] = step.X();
+      dpos[0] = step[1];
     }
     
     const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;    
-    float tick = ( step.T()*1.0e-3 - (trig_time-4050.0) )/0.5 + dpos[0]/cm_per_tick + 3200.0;
+    float tick = ( step[0]*1.0e-3 - (trig_time-4050.0) )/0.5 + dpos[0]/cm_per_tick + 3200.0;
     
     return tick;
+  }
+
+  std::vector<float> getFirstStepPosInsideImage( const larlite::mctrack& track, const larcv::ImageMeta& meta, const float trig_time,
+						 const bool startAtstart, const float max_step_size, const float fv_border, const larlitecv::SpaceChargeMicroBooNE* psce ) {
+    // This function returns the (SCE-corrected) position where a MC track first is inside the image bounds
+    const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;    
+    int npts = (int)track.size();
+
+    for ( int ipt=1; ipt<npts; ipt++ ) {
+
+      int thispt = ipt;
+      int lastpt = thispt-1;
+      if ( !startAtstart ) {
+	thispt = npts-1-ipt;
+	lastpt = thispt+1;
+      }
+      
+      const auto& this_step = track.at( thispt );
+      const auto& last_step = track.at( lastpt );
+      
+      float dir[3] = { float(this_step.X()-last_step.X()), float(this_step.Y()-last_step.Y()), float(this_step.Z()-last_step.Z()) };
+      float dirnorm = 0;
+      for (int i=0; i<3; i++) {
+	dirnorm += dir[i]*dir[i];
+      }
+      dirnorm = sqrt(dirnorm);
+      for (int i=0; i<3; i++)
+	dir[i] /= dirnorm;
+      int nsteps=dirnorm/max_step_size+1;
+      float stepsize = dirnorm/float(nsteps);
+      for (int istep=0; istep<nsteps; istep++) {
+	std::vector<float> pos(4,0);
+	std::vector<float> pos4v(4,0);
+	pos4v[0] = last_step.T();	
+	pos[0] = pos4v[1] = last_step.X() + stepsize*(istep)*dir[0];
+	pos[1] = pos4v[2] = last_step.Y() + stepsize*(istep)*dir[1];
+	pos[2] = pos4v[3] = last_step.Z() + stepsize*(istep)*dir[2];
+	
+	std::vector<double> offset = psce->GetPosOffsets( pos[0], pos[1], pos[2] );
+	std::vector<float> pos_sce(3);
+	pos_sce[0] = pos[0]-(float)offset[0]+0.7;
+	pos_sce[1] = pos[1]+(float)offset[1];
+	pos_sce[2] = pos[2]+(float)offset[2];
+	int boundary_type = -1;
+	float fdwall = larlitecv::dwall( pos, boundary_type );
+	if ( fdwall<fv_border )
+	  continue;
+
+	float tick = getTick( pos4v, trig_time, psce );
+	if ( tick<meta.min_y()+20.0 || tick>meta.max_y()-20.0 )
+	  continue;
+
+	float true_x = pos[0];
+	std::cout << " [" << ipt << "/" << istep << "] tick=" << tick << " truepos=(" << pos[0] << "," << pos[1] << "," << pos[2] << ") ";
+	pos[0] = (tick-3200.0)*cm_per_tick; // we have to give the apparent-x (relative to the trigger) because we need to test the position in the image
+	std::cout << " in-time pos=(" << pos[0] << "," << pos[1] << "," << pos[2] << ") tick=" << tick << " "; 
+	std::vector<int> imgcoords;
+	try {
+	  imgcoords = larcv::UBWireTool::getProjectedImagePixel( pos, meta, 3 );
+	  std::cout << " imgcoords=(row=" << imgcoords[0] << "," << imgcoords[1] << "," << imgcoords[2] << "," << imgcoords[3] << ")" << std::endl;
+	}
+	catch (...) {
+	  std::cout << std::endl;
+	  continue;
+	}
+	
+	// valid step. return
+	pos[0] = true_x;
+	return pos;
+      }
+      
+    }//end of track loop
+
+    // didn't find the crossing boundary
+    std::vector<float> empty;
+    return empty;
   }
 
   

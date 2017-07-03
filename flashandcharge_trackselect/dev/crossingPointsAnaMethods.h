@@ -98,12 +98,17 @@ namespace larlitecv {
 
   void analyzeCrossingMatches( CrossingPointAnaData_t& data, std::vector<larcv::EventPixel2D*> ev_spacepoints, const larcv::ImageMeta& meta );  
 
+  float getTick( const std::vector<float>& step, const float trig_time=4050.0, const larlitecv::SpaceChargeMicroBooNE* psce=NULL );
+  
   float getTick( const larlite::mcstep& step, const float trig_time=4050.0, const larlitecv::SpaceChargeMicroBooNE* psce=NULL );
 
   bool doesTrackCrossImageBoundary( const larlite::mctrack& track, const larcv::ImageMeta& meta, const float trig_time, const larlitecv::SpaceChargeMicroBooNE* psce );
 
   std::vector<int> getImageBoundaryCrossingPoint( const larlite::mctrack& track, std::vector<float>& crossingpt, const larcv::ImageMeta& meta,
 						  const float boundary_tick_buffer, const float trig_time, const larlitecv::SpaceChargeMicroBooNE* psce );
+
+  std::vector<float> getFirstStepPosInsideImage( const larlite::mctrack& track, const larcv::ImageMeta& meta, const float trig_time,
+						 const bool startAtstart, const float max_step_size, const float fv_border, const larlitecv::SpaceChargeMicroBooNE* psce );
   
 }
 
