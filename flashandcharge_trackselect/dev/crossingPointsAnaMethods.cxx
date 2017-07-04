@@ -96,7 +96,7 @@ namespace larlitecv {
       std::string end_crossingname = larlitecv::BoundaryEndNames( (BoundaryEnd_t)track_end_boundary );      
 
 
-      // space charge corrections
+      // space charge corrections to true start and stop point
       std::vector<double> start_offset = sce.GetPosOffsets( first_step.X(), first_step.Y(), first_step.Z() );
       std::vector<double> end_offset   = sce.GetPosOffsets( last_step.X(),  last_step.Y(),  last_step.Z() );
 
@@ -115,8 +115,8 @@ namespace larlitecv {
 
       std::vector< int > start_pix(4,0); // (row, u-plane, v-plane, y-plane)
       std::vector< int > end_pix(4,0); // (row, u-plane, v-plane, y-plane)
-      start_pix[0] = (first_step.T()*1.0e-3 - (ev_trigger->TriggerTime()-4050.0))/0.5 + sce_start[0]/cm_per_tick + 3200;
-      end_pix[0]   = (last_step.T()*1.0e-3  - (ev_trigger->TriggerTime()-4050.0))/0.5 + sce_end[0]/cm_per_tick   + 3200;
+      start_pix[0] = (first_step.T()*1.0e-3 - (ev_trigger->TriggerTime()-4050.0))/0.5 + sce_start[0]/cm_per_tick + 3200; // tick
+      end_pix[0]   = (last_step.T()*1.0e-3  - (ev_trigger->TriggerTime()-4050.0))/0.5 + sce_end[0]/cm_per_tick   + 3200; // tick
       for ( size_t p=0; p<3; p++ ) {
 	start_pix[p+1] = larutil::Geometry::GetME()->WireCoordinate( sce_start_xyz, p );
 	end_pix[p+1]   = larutil::Geometry::GetME()->WireCoordinate( sce_end_xyz,   p );
@@ -212,7 +212,7 @@ namespace larlitecv {
       
       // we can find the location where muons cross the image boundary
       bool crosses_boundary = doesTrackCrossImageBoundary( track, meta, ev_trigger->TriggerTime(), &sce );
-      if ( crosses_boundary ) {
+      if ( crosses_boundary && (!start_intime || !end_intime) ) {
 	std::vector< float > crossingpt(3,0);
 	std::vector<int> crossing_imgcoords = getImageBoundaryCrossingPoint( track, crossingpt, meta, 20.0, ev_trigger->TriggerTime(), &sce );
 	if ( start_intime && !end_intime) {
@@ -242,6 +242,7 @@ namespace larlitecv {
 	else {
 	  std::stringstream msg;
 	  msg << __FILE__ << ":" << __LINE__ << " boundary crossing logic error." << std::endl;
+	  msg << "  start_intime=" << start_intime << " end_intime=" << end_intime << " crosses_boundary=" << crosses_boundary << std::endl;
 	  throw std::runtime_error( msg.str() );
 	}
 	
@@ -564,9 +565,9 @@ namespace larlitecv {
 	std::vector<float> pos(4,0);
 	std::vector<float> pos4v(4,0);
 	pos4v[0] = last_step.T();	
-	pos[0] = pos4v[1] = last_step.X() + stepsize*(istep)*dir[0];
-	pos[1] = pos4v[2] = last_step.Y() + stepsize*(istep)*dir[1];
-	pos[2] = pos4v[3] = last_step.Z() + stepsize*(istep)*dir[2];
+	pos[0] = pos4v[1] = last_step.X() + stepsize*float(istep)*dir[0];
+	pos[1] = pos4v[2] = last_step.Y() + stepsize*float(istep)*dir[1];
+	pos[2] = pos4v[3] = last_step.Z() + stepsize*float(istep)*dir[2];
 	
 	std::vector<double> offset = psce->GetPosOffsets( pos[0], pos[1], pos[2] );
 	std::vector<float> pos_sce(3);
@@ -583,7 +584,7 @@ namespace larlitecv {
 	  continue;
 
 	float true_x = pos[0];
-	std::cout << " [" << ipt << "/" << istep << "] tick=" << tick << " truepos=(" << pos[0] << "," << pos[1] << "," << pos[2] << ") ";
+	std::cout << " [" << ipt << ":" << istep << "/" << nsteps << "] tick=" << tick << " truepos=(" << pos[0] << "," << pos[1] << "," << pos[2] << ") ";
 	pos[0] = (tick-3200.0)*cm_per_tick; // we have to give the apparent-x (relative to the trigger) because we need to test the position in the image
 	std::cout << " in-time pos=(" << pos[0] << "," << pos[1] << "," << pos[2] << ") tick=" << tick << " "; 
 	std::vector<int> imgcoords;

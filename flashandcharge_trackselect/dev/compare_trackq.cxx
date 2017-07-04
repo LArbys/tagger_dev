@@ -51,6 +51,7 @@
 
 // larlitecv
 #include "Base/DataCoordinator.h"
+#include "ChargeSegmentAlgos/PathPixelChargeMethods.h"
 
 int main( int nargs, char** argv ) {
   
@@ -198,12 +199,31 @@ int main( int nargs, char** argv ) {
   // tree->Branch("nvertex_tagged",      nvertex_tagged,      std::string("nvertex_tagged"+s_arr.str()).c_str() );
   // tree->Branch("nvertex_incroi",      nvertex_incroi,      "nvertex_incroi[4]/I" );
 
-  // tree->Branch("num_rois", &num_rois, "num_rois/I");
-  // tree->Branch("nnu_inroi", nnu_inroi, "nnu_inroi[4]" );
-  // tree->Branch("vtx_in_croi", &vertex_in_croi,         "vtx_in_croi/I" );
-  // tree->Branch("dist_to_vtx", &closest_dist_to_vertex, "dist_to_vtx/F" );
-  // tree->Branch("stage_at_vtx", &closest_dist_stage, "stage_at_vtx/I" );
-  
+  // track charge ana variables
+  float plane_trackq[3] = {0.0};
+  float plane_goodfrac[3] = {0.0};
+  int plane_goodpix[3] = {0};
+  float uv_trackqdiff = 0.;
+  float uy_trackqdiff = 0.;
+  float vy_trackqdiff = 0.;
+  TTree* ptqtree = new TTree("PointQ", "Pixel Charge per reco track point");
+  ptqtree->Branch("plane_goodpix", plane_goodpix, "plane_goodpix[3]/I");
+  ptqtree->Branch("plane_goodfrac", plane_goodfrac, "plane_goodfrac[3]/F");
+  ptqtree->Branch("plane_trackq", plane_trackq, "plane_trackq[3]/F");
+  ptqtree->Branch("uv_trackqdiff", &uv_trackqdiff, "uv_trackqdiff/F");
+  ptqtree->Branch("uy_trackqdiff", &uy_trackqdiff, "uy_trackqdiff/F");
+  ptqtree->Branch("vy_trackqdiff", &vy_trackqdiff, "vy_trackqdiff/F");
+
+  float plane_tracktotq[3] = {0.0};
+  float uv_totqdiff = 0.;
+  float uy_totqdiff = 0.;
+  float vy_totqdiff = 0.;    
+  TTree* trackqtree = new TTree("TrackQ", "Pixel Charger per track");
+  trackqtree->Branch( "plane_tracktotq", plane_tracktotq, "plane_tracktotq[3]" ); 
+  trackqtree->Branch("uv_totqdiff", &uv_totqdiff, "uv_totqdiff/F");
+  trackqtree->Branch("uy_totqdiff", &uy_totqdiff, "uy_totqdiff/F");
+  trackqtree->Branch("vy_totqdiff", &vy_totqdiff, "vy_totqdiff/F");
+ 
   xingptdata.bindToTree( tree );
   
   // // Space Charge Corrections
@@ -510,6 +530,38 @@ int main( int nargs, char** argv ) {
 	std::cout << std::endl;
       }//end of mctrack loop
 
+      // --------------------------------------------------------------------------------
+      // Compare Q sums between planes
+      for ( auto const& bmtrack : mc_recotracks ) {
+	std::vector<larlitecv::PixelQPt> trackq = larlitecv::getPixelQPts( bmtrack.path3d, imgs_v, badch_v, 5, 5.0, 0.3 );
+	for ( auto const& qpt : trackq )  {
+	  for (int p=0; p<3; p++) {
+	    plane_trackq[p] = qpt.getPlaneCharge()[p];
+	    float totpix = qpt.getGoodPixelsPerPlane()[p]+qpt.getBadPixelsPerPlane()[p];
+	    plane_goodpix[p] = qpt.getGoodPixelsPerPlane()[p];
+	    if ( totpix>0 )
+	      plane_goodfrac[p] = float(plane_goodpix[p])/totpix;
+	    else
+	      plane_goodfrac[p] = 0.0;
+	  }
+	  uv_trackqdiff = plane_trackq[0]-plane_trackq[1];
+	  uy_trackqdiff = plane_trackq[0]-plane_trackq[2];
+	  vy_trackqdiff = plane_trackq[1]-plane_trackq[2];
+	  ptqtree->Fill();
+	}
+	std::vector<double> total_track_q = larlitecv::getTrackTotalPixelCharge( bmtrack.path3d, imgs_v, badch_v, 5, 5.0, 0.3 );
+	for ( int p=0; p<3; p++) {
+	  plane_tracktotq[p] = total_track_q[p];
+	}
+	uv_totqdiff = plane_tracktotq[0]-plane_tracktotq[1];
+	uy_totqdiff = plane_tracktotq[0]-plane_tracktotq[2];
+	vy_totqdiff = plane_tracktotq[1]-plane_tracktotq[2];
+	trackqtree->Fill();
+      }
+      // --------------------------------------------------------------------------------
+      
+      // --------------------------------------------------------------------------------
+      // OPEN CV VISUALIZATION
 #ifdef USE_OPENCV
       // draw start points
       for ( int ipt=0; ipt<(int)xingptdata.start_pixels.size(); ipt++) {
@@ -535,8 +587,7 @@ int main( int nargs, char** argv ) {
 	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 0, 0, 255 ), -1 );
 	}
       }
-      // draw tracks
-      
+      // draw tracks      
       for (auto const& track : mc_recotracks ) {
 	std::vector<larcv::Pixel2DCluster> plane_pixels = larlitecv::getTrackPixelsFromImages( track.path3d,  imgs_v, badch_v, label_thresholds_v, label_neighborhood, 0.3 );
 	int p=-1;
@@ -547,7 +598,7 @@ int main( int nargs, char** argv ) {
 	  }
 	}
       }
-      
+      // --------------------------------------------------------------------------------      
 #endif
       
     } // end of MC functions   
@@ -564,7 +615,7 @@ int main( int nargs, char** argv ) {
 #endif
     
     tree->Fill();
-    break;
+
   }//end of entry loop
 
   rfile->Write();
