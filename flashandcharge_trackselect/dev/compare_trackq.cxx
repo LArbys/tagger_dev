@@ -145,7 +145,7 @@ int main( int nargs, char** argv ) {
   TFile* rfile = new TFile(outfname.c_str(), "recreate");
   TTree* tree = new TTree("compareq", "Compare Track Charge");
 
-  // Event Index
+  // Event Indexf
   int run, subrun, event;
 
   // Truth Quantities about interaction and lepton
@@ -174,7 +174,7 @@ int main( int nargs, char** argv ) {
   // int vertex_in_croi; // is vertex in an CROI
   // float closest_dist_to_vertex;
   // int closest_dist_stage;
-
+  
   // Crossing Point data
   larlitecv::CrossingPointAnaData_t xingptdata;
 
@@ -199,6 +199,16 @@ int main( int nargs, char** argv ) {
   // tree->Branch("nvertex_tagged",      nvertex_tagged,      std::string("nvertex_tagged"+s_arr.str()).c_str() );
   // tree->Branch("nvertex_incroi",      nvertex_incroi,      "nvertex_incroi[4]/I" );
 
+  // truth end point track reco metrics
+  int ntracks_2planeq = 0;
+  int ntracks_recod_2planeq = 0;
+  int ntracks_all = 0;
+  int ntracks_recod_all = 0;
+  tree->Branch( "ntracks_2planeq", &ntracks_2planeq, "ntracks_2planeq/I" );
+  tree->Branch( "ntracks_recod_2planeq", &ntracks_recod_2planeq, "ntracks_recod_2planeq/I" );
+  tree->Branch( "ntracks_all", &ntracks_all, "ntracks_all/I" );
+  tree->Branch( "ntracks_recod_all", &ntracks_recod_all, "ntracks_recod_all/I" );  
+  
   // track charge ana variables
   float plane_trackq[3] = {0.0};
   float plane_goodfrac[3] = {0.0};
@@ -283,6 +293,11 @@ int main( int nargs, char** argv ) {
     // initialize the output variables
     truthdata.clear();
     xingptdata.clear();
+    ntracks_2planeq = 0;
+    ntracks_recod_2planeq = 0;
+    ntracks_all = 0;
+    ntracks_recod_all = 0;
+    
     // for (int p=0; p<4; p++) {
     //   ncosmic_pixels[p] = 0;
     //   nnu_pixels[0] = 0;
@@ -407,11 +422,11 @@ int main( int nargs, char** argv ) {
     }
 
     // get the opflashes
-    std::vector< larlite::event_opflash* > opflash_v;
+    std::vector< larlite::event_opflash* > event_opflash_v;
     for ( auto const& prodname : flashprod ) {
       larlite::event_opflash* ev_flash = (larlite::event_opflash*)dataco[kSource].get_larlite_data(larlite::data::kOpFlash, prodname);
       std::cout << "number of flashes in " << prodname << ": " << ev_flash->size() << std::endl;
-      opflash_v.push_back( ev_flash );
+      event_opflash_v.push_back( ev_flash );
     }
 
     // get other information, e.g. truth
@@ -444,7 +459,7 @@ int main( int nargs, char** argv ) {
     if ( ismc ) {
 
       // loop over MC tracks, get end points of muons
-      larlitecv::analyzeCrossingMCTracks( xingptdata, imgs_v.front().meta(),  ev_trigger, ev_mctrack, opflash_v, printFlashEnds );
+      larlitecv::analyzeCrossingMCTracks( xingptdata, imgs_v.front().meta(),  imgs_v, ev_trigger, ev_mctrack, event_opflash_v, printFlashEnds );
       int intime_cosmics = xingptdata.true_intime_thrumu + xingptdata.true_intime_stopmu;
       std::cout << "End points from MC Truth" << std::endl;
       for (int i=0; i<larlitecv::kNumEndTypes; i++) {
@@ -510,9 +525,16 @@ int main( int nargs, char** argv ) {
 	if ( start_index>=0 && end_index>=0 ) {
 	  std::cout << " start=(" << mctrack_endpts[0]->at(0).row << "," << mctrack_endpts[0]->at(0).col << "," << mctrack_endpts[0]->at(1).col << "," << mctrack_endpts[0]->at(2).col << ")";
 	  std::cout << " end(" << mctrack_endpts[1]->at(0).row << "," << mctrack_endpts[1]->at(0).col << "," << mctrack_endpts[1]->at(1).col << "," << mctrack_endpts[1]->at(2).col << ")";
+	  ntracks_all++;
+	  if ( xingptdata.start_crossing_nplanes_w_charge[start_index]>=2 && xingptdata.end_crossing_nplanes_w_charge[end_index]>=2)
+	    ntracks_2planeq++;
 	  try {
 	    thrumualgo.makeTrackClusters3D( imgs_v, badch_v, mctrack_endpts, trackclusters, tagged_v, used_endpoints_indices );
 	    if ( trackclusters.size()>0 ) {
+	      // successful reco returned!
+	      ntracks_recod_all++;
+	      if ( xingptdata.start_crossing_nplanes_w_charge[start_index]>=2 && xingptdata.end_crossing_nplanes_w_charge[end_index]>=2)
+		ntracks_recod_2planeq++;
 	      mc_recotracks.emplace_back( std::move(trackclusters.at(0)) );
 	    }
 	  }
@@ -572,7 +594,10 @@ int main( int nargs, char** argv ) {
 	  int col = xingptdata.start_pixels[ipt][p+1];
 	  if ( col<0 ) col = 0;
 	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
-	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0, 0, 255, 255 ), -1 );
+	  int radius = -1;
+	  if ( xingptdata.start_crossing_nplanes_w_charge[ipt]<=1 )
+	    radius = 1;
+	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0, 0, 255, 255 ), radius );
 	}
       }
       // draw end points
@@ -584,7 +609,10 @@ int main( int nargs, char** argv ) {
 	  int col = xingptdata.end_pixels[ipt][p+1];
 	  if ( col<0 ) col = 0;
 	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
-	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 0, 0, 255 ), -1 );
+	  int radius = -1;
+	  if ( xingptdata.end_crossing_nplanes_w_charge[ipt]<=1 )
+	    radius = 1;
+	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 0, 0, 255 ), radius );
 	}
       }
       // draw tracks      
@@ -615,7 +643,7 @@ int main( int nargs, char** argv ) {
 #endif
     
     tree->Fill();
-
+    //break;
   }//end of entry loop
 
   rfile->Write();

@@ -8,6 +8,7 @@
 
 // larcv
 #include "DataFormat/EventPixel2D.h"
+#include "DataFormat/Image2D.h"
 #include "DataFormat/ImageMeta.h"
 #include "SCE/SpaceChargeMicroBooNE.h"
 #include "UBWireTool/UBWireTool.h"
@@ -37,27 +38,29 @@ namespace larlitecv {
     tree->Branch( "true_intime_stopmu",      &true_intime_stopmu,     "true_intime_stopmu/I");
   }
 
-  void analyzeCrossingPoints( CrossingPointAnaData_t& data, const larcv::ImageMeta& meta,
+  void analyzeCrossingPoints( CrossingPointAnaData_t& data, const larcv::ImageMeta& meta, const std::vector<larcv::Image2D>& img_v,
 			      const larcv::EventPixel2D* ev_spacepoints[], const std::vector<larlite::event_opflash*>& opflash_v,
 			      const larlite::trigger* ev_trigger, const larlite::event_mctrack* ev_mctrack ) {
 			      
     data.clear();
 
     if ( ev_mctrack && ev_trigger ) {
-      analyzeCrossingMCTracks( data, meta, ev_trigger, ev_mctrack, opflash_v, true );
+      analyzeCrossingMCTracks( data, meta, img_v, ev_trigger, ev_mctrack, opflash_v, true );
     }
   }
   
-  void analyzeCrossingMCTracks( CrossingPointAnaData_t& data, const larcv::ImageMeta& meta,
+  void analyzeCrossingMCTracks( CrossingPointAnaData_t& data, const larcv::ImageMeta& meta, const std::vector<larcv::Image2D>& img_v,
 				const larlite::trigger* ev_trigger, const larlite::event_mctrack* ev_mctrack, const std::vector<larlite::event_opflash*>& opflash_v,
 				bool printFlashEnds ) {
     // loop over MC tracks, get end points of muons
     //int intime_cosmics = 0;
 
     larlitecv::SpaceChargeMicroBooNE sce;
-    const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;    
+    const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
+    const int endpt_radius = 10;
 
     data.mctrack_imgendpoint_indices.resize( ev_mctrack->size() );
+
     int trackindex = -1;
     for ( auto const& track : *ev_mctrack ) {
       trackindex++;
@@ -104,7 +107,7 @@ namespace larlitecv {
       sce_start[0] = first_step.X()-start_offset[0]+0.7;
       sce_start[1] = first_step.Y()+start_offset[1];
       sce_start[2] = first_step.Z()+start_offset[2];
-      std::cout << "x-offset: true-x=" << first_step.X() << " -> offset " << start_offset[0] << std::endl;
+      //std::cout << "x-offset: true-x=" << first_step.X() << " -> offset " << start_offset[0] << std::endl;
       Double_t sce_start_xyz[3] = { sce_start[0], sce_start[1], sce_start[2] };
 
       std::vector<float> sce_end(3);
@@ -128,36 +131,57 @@ namespace larlitecv {
 
       bool start_intime = false;
       bool start_crosses = false;
-      bool start_found_flash = false;	        
+      bool start_found_flash = false;
+      int flash_index = -1;
+      int start_nplanes_above_thresh = 0;
+
+      // flash match start crossing point
+      int iflashindex = -1;
+      for ( auto const& ev_opflash : opflash_v ) {
+	for ( auto const& opflash : *ev_opflash ) {
+	  iflashindex++;
+	  if ( start_found_flash )
+	    break;		
+	  if ( fabs( orig_start_tick - (3200.0+opflash.Time()/0.5) )<5.0 ) {
+	    start_found_flash = true;
+	    flash_index = iflashindex;
+	  }
+	}
+      }
+      
       if ( start_pix[0]>meta.min_y() && start_pix[0]<meta.max_y() ) {
 	start_intime = true;
 	start_pix[0] = meta.row( start_pix[0] );
 	  
 	if ( track_start_dwall < 20.0 ) {
-	  
-	  // flash match this crossing point
-	  if ( track_start_boundary==4 || track_start_boundary==5 ) {
-	    for ( auto const& ev_opflash : opflash_v ) {
-	      for ( auto const& opflash : *ev_opflash ) {
-		if ( start_found_flash )
-		  break;		
-		if ( fabs( orig_start_tick - (3200.0+opflash.Time()/0.5) )<5.0 ) {
-		  start_found_flash = true;
+
+	  // check neighborhood around pixel (has charge around?)
+	  start_nplanes_above_thresh = 0;
+	  for (int p=0; p<3; p++) {
+	    int nabove_thresh = 0;
+	    for (int dr=-endpt_radius; dr<=endpt_radius; dr++) {
+	      int srow = start_pix[0]+dr;
+	      if ( srow<0 || srow>=(int)meta.rows() )
+		continue;
+	      for (int dc=-endpt_radius; dc<=endpt_radius; dc++) {
+		int scol = start_pix[p+1]+dc;
+		if ( scol<0 || scol>=(int)meta.cols() )
+		  continue;
+		if ( img_v[p].pixel( srow, scol )>10.0 ) {
+		  nabove_thresh++;
 		}
 	      }
-	      if ( start_found_flash )
-		break;
-	    }//end of ev_opflash loop
-
-	    if ( start_found_flash ) {
-	      data.tot_flashmatched_true_crossingpoints++;
-	      data.flashmatched_true_crossingpoints[ track_start_boundary ]++;
+	    }//end of row loop
+	    if ( nabove_thresh>0 ) {
+	      start_nplanes_above_thresh++;
 	    }
-	  }
-
+	  }//end of plane loop
+	  
 	  data.start_pixels.push_back( start_pix );
 	  data.start_crossingpts.emplace_back( std::move(sce_start) );
+	  data.start_crossing_flashindex.push_back( flash_index );
 	  data.start_type.push_back( track_start_boundary );
+	  data.start_crossing_nplanes_w_charge.push_back( start_nplanes_above_thresh );
 	  start_crosses = true;
 	  data.tot_true_crossingpoints++;
 	  data.true_crossingpoints[track_start_boundary]++;
@@ -166,13 +190,37 @@ namespace larlitecv {
       
       bool end_intime = false;
       bool end_crosses = false;
-      bool end_found_flash = false;	        
+      bool end_found_flash = false;
+      int end_nplanes_above_thresh = 0;
+
       if ( end_pix[0]>meta.min_y() && end_pix[0]<meta.max_y() ) {
 	end_intime = true;
 	end_pix[0]   = meta.row( end_pix[0] );
 	if ( track_end_dwall < 20.0 ) {
 
-	  
+
+	  // check neighborhood around pixel (has charge around?)
+	  end_nplanes_above_thresh = 0;
+	  for (int p=0; p<3; p++) {
+	    int nabove_thresh = 0;
+	    for (int dr=-endpt_radius; dr<=endpt_radius; dr++) {
+	      int srow = end_pix[0]+dr;
+	      if ( srow<0 || srow>=(int)meta.rows() )
+		continue;
+	      for (int dc=-endpt_radius; dc<=endpt_radius; dc++) {
+		int scol = end_pix[p+1]+dc;
+		if ( scol<0 || scol>=(int)meta.cols() )
+		  continue;
+		if ( img_v[p].pixel( srow, scol )>10.0 ) {
+		  nabove_thresh++;
+		}
+	      }
+	    }//end of row loop
+	    if ( nabove_thresh>0 ) {
+	      end_nplanes_above_thresh++;
+	    }
+	  }//end of plane loop
+
 	  // flash match this crossing point
 	  if ( track_end_boundary==4 || track_end_boundary==5 ) {
 	    for ( auto const& ev_opflash : opflash_v ) {
@@ -195,6 +243,7 @@ namespace larlitecv {
 	  
 	  data.end_pixels.push_back( end_pix );
 	  data.end_crossingpts.emplace_back( std::move(sce_end) );
+	  data.end_crossing_nplanes_w_charge.push_back( end_nplanes_above_thresh );
 	  data.end_type.push_back( track_end_boundary );
 	  end_crosses = true;
 	  data.tot_true_crossingpoints++;
@@ -221,6 +270,7 @@ namespace larlitecv {
 	  end_crossingname = "ImageEnd";
 	  data.end_pixels.push_back( crossing_imgcoords );
 	  data.end_crossingpts.emplace_back( std::move(crossingpt) );
+	  data.end_crossing_nplanes_w_charge.push_back( end_nplanes_above_thresh );
 	  data.end_type.push_back( track_end_boundary );
 	  end_crosses = true;
 	  data.tot_true_crossingpoints++;
@@ -233,6 +283,8 @@ namespace larlitecv {
 	  start_crossingname = "ImageEnd";	  
 	  data.start_pixels.push_back( crossing_imgcoords );
 	  data.start_crossingpts.emplace_back( std::move(crossingpt) );
+	  data.start_crossing_flashindex.push_back( flash_index );
+	  data.start_crossing_nplanes_w_charge.push_back( start_nplanes_above_thresh );
 	  data.start_type.push_back( track_start_boundary );
 	  start_crosses = true;
 	  data.tot_true_crossingpoints++;
@@ -256,7 +308,8 @@ namespace larlitecv {
 	if ( track_start_boundary==larlitecv::kImageEnd )
 	  std::cout << " imgx row=" << data.start_pixels.back()[0]
 		    << " imgx pos=(" << data.start_crossingpts.back()[0] << "," << data.start_crossingpts.back()[1] << "," << data.start_crossingpts.back()[2] << ")";
-	std::cout << " dwall=" << track_start_dwall << " intime=" << start_intime 
+	std::cout << " dwall=" << track_start_dwall << " intime=" << start_intime
+		  << " nplaneswq=" << data.start_crossing_nplanes_w_charge.back()
 		  << std::endl;
 
 	std::cout << "  End Boundary Crossing: boundary=" << end_crossingname
@@ -266,12 +319,10 @@ namespace larlitecv {
 	  std::cout << " imgx row=" << data.end_pixels.back()[0]
 		    << " imgx pos=(" << data.end_crossingpts.back()[0] << "," << data.end_crossingpts.back()[1] << "," << data.end_crossingpts.back()[2] << ")";
 	
-	std::cout << " dwall=" << track_end_dwall << " intime=" << end_intime 	  
+	std::cout << " dwall=" << track_end_dwall << " intime=" << end_intime
+		  << " nplaneswq=" << data.end_crossing_nplanes_w_charge.back()	  
 		  << std::endl;
-	if ( track_start_boundary==larlitecv::kAnode || track_start_boundary==larlitecv::kCathode )
-	  std::cout  << "  Found start flash: " << start_found_flash << std::endl;
-	if ( track_end_boundary==larlitecv::kAnode || track_end_boundary==larlitecv::kCathode )
-	  std::cout  << "  Found end flash: " << end_found_flash << std::endl;
+	std::cout  << "  Found flash: " << start_found_flash << " index=" << flash_index << std::endl;
       }
 	
       if ( start_intime || end_intime ) {
@@ -584,16 +635,16 @@ namespace larlitecv {
 	  continue;
 
 	float true_x = pos[0];
-	std::cout << " [" << ipt << ":" << istep << "/" << nsteps << "] tick=" << tick << " truepos=(" << pos[0] << "," << pos[1] << "," << pos[2] << ") ";
+	//std::cout << " [" << ipt << ":" << istep << "/" << nsteps << "] tick=" << tick << " truepos=(" << pos[0] << "," << pos[1] << "," << pos[2] << ") ";
 	pos[0] = (tick-3200.0)*cm_per_tick; // we have to give the apparent-x (relative to the trigger) because we need to test the position in the image
-	std::cout << " in-time pos=(" << pos[0] << "," << pos[1] << "," << pos[2] << ") tick=" << tick << " "; 
+	//std::cout << " in-time pos=(" << pos[0] << "," << pos[1] << "," << pos[2] << ") tick=" << tick << " "; 
 	std::vector<int> imgcoords;
 	try {
 	  imgcoords = larcv::UBWireTool::getProjectedImagePixel( pos, meta, 3 );
-	  std::cout << " imgcoords=(row=" << imgcoords[0] << "," << imgcoords[1] << "," << imgcoords[2] << "," << imgcoords[3] << ")" << std::endl;
+	  //std::cout << " imgcoords=(row=" << imgcoords[0] << "," << imgcoords[1] << "," << imgcoords[2] << "," << imgcoords[3] << ")" << std::endl;
 	}
 	catch (...) {
-	  std::cout << std::endl;
+	  ///std::cout << std::endl;
 	  continue;
 	}
 	

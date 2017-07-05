@@ -50,8 +50,11 @@ namespace larlitecv {
     std::vector< int > end_type;
     std::vector< std::vector<int> > start_pixels;
     std::vector< std::vector<float> > start_crossingpts;
+    std::vector< int > start_crossing_flashindex;
+    std::vector< int > start_crossing_nplanes_w_charge;
     std::vector< std::vector<int> > end_pixels;
     std::vector< std::vector<float> > end_crossingpts;
+    std::vector< int > end_crossing_nplanes_w_charge;    
     bool saved_mc;
 
     // MC track end points
@@ -79,8 +82,11 @@ namespace larlitecv {
       end_type.clear();
       start_pixels.clear();
       start_crossingpts.clear();
+      start_crossing_flashindex.clear();
+      start_crossing_nplanes_w_charge.clear();      
       end_pixels.clear();
       end_crossingpts.clear();
+      end_crossing_nplanes_w_charge.clear();
       mctrack_imgendpoint_indices.clear();
       saved_mc = false;
     };
@@ -88,10 +94,11 @@ namespace larlitecv {
     void bindToTree( TTree* tree );
   };//end of struct
 
-  void analyzeCrossingPoints( CrossingPointAnaData_t& data, const larcv::ImageMeta& meta, const larcv::EventPixel2D* ev_spacepoints[], const std::vector<larlite::event_opflash*>& opflash_v,
+  void analyzeCrossingPoints( CrossingPointAnaData_t& data, const larcv::ImageMeta& meta, const std::vector<larcv::Image2D>& img_v,
+			      const larcv::EventPixel2D* ev_spacepoints[], const std::vector<larlite::event_opflash*>& opflash_v,
 			      const larlite::trigger* ev_trigger=nullptr, const larlite::event_mctrack* ev_mctrack=nullptr );
 			      
-  void analyzeCrossingMCTracks( CrossingPointAnaData_t& data, const larcv::ImageMeta& meta,
+  void analyzeCrossingMCTracks( CrossingPointAnaData_t& data, const larcv::ImageMeta& meta, const std::vector<larcv::Image2D>& img_v,
 				const larlite::trigger* ev_trigger, const larlite::event_mctrack* ev_mctrack, const std::vector<larlite::event_opflash*>& opflash_v, bool printAnodeEnds );
 
   void analyzeCrossingDataOnly( CrossingPointAnaData_t& data, std::vector<larcv::EventPixel2D*>& ev_spacepoints );  
