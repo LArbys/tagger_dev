@@ -82,8 +82,8 @@ namespace larlitecv {
 	continue;
       }
 	
-      std::vector<float> fstart = getFirstStepPosInsideImage( track, meta, ev_trigger->TriggerTime(), true, 0.15, 10.0, &sce );
-      std::vector<float> fend   = getFirstStepPosInsideImage( track, meta, ev_trigger->TriggerTime(), false, 0.15, 10.0, &sce );
+      std::vector<float> fstart = getFirstStepPosInsideImage( track, meta, ev_trigger->TriggerTime(), true, 0.15, 3.0, &sce );
+      std::vector<float> fend   = getFirstStepPosInsideImage( track, meta, ev_trigger->TriggerTime(), false, 0.15, 3.0, &sce );
 
       if ( fstart.size()==0 || fend.size()==0 ) {
 	std::cout << "[TRACK #" << trackindex << "] no part of track inside image." << std::endl;
@@ -100,20 +100,28 @@ namespace larlitecv {
 
 
       // space charge corrections to true start and stop point
-      std::vector<double> start_offset = sce.GetPosOffsets( first_step.X(), first_step.Y(), first_step.Z() );
-      std::vector<double> end_offset   = sce.GetPosOffsets( last_step.X(),  last_step.Y(),  last_step.Z() );
+      // std::vector<double> start_offset = sce.GetPosOffsets( first_step.X(), first_step.Y(), first_step.Z() );
+      // std::vector<double> end_offset   = sce.GetPosOffsets( last_step.X(),  last_step.Y(),  last_step.Z() );
+      std::vector<double> start_offset = sce.GetPosOffsets( fstart[0], fstart[1], fstart[2] );
+      std::vector<double> end_offset   = sce.GetPosOffsets( fend[0], fend[1], fend[2] );
 
       std::vector<float> sce_start(3);
-      sce_start[0] = first_step.X()-start_offset[0]+0.7;
-      sce_start[1] = first_step.Y()+start_offset[1];
-      sce_start[2] = first_step.Z()+start_offset[2];
+      // sce_start[0] = first_step.X()-start_offset[0]+0.7;
+      // sce_start[1] = first_step.Y()+start_offset[1];
+      // sce_start[2] = first_step.Z()+start_offset[2];
+      sce_start[0] = fstart[0]-start_offset[0]+0.7;
+      sce_start[1] = fstart[1]+start_offset[1];
+      sce_start[2] = fstart[2]+start_offset[2];
       //std::cout << "x-offset: true-x=" << first_step.X() << " -> offset " << start_offset[0] << std::endl;
       Double_t sce_start_xyz[3] = { sce_start[0], sce_start[1], sce_start[2] };
 
       std::vector<float> sce_end(3);
-      sce_end[0] = last_step.X()-end_offset[0]+0.7;
-      sce_end[1] = last_step.Y()+end_offset[1];
-      sce_end[2] = last_step.Z()+end_offset[2];
+      // sce_end[0] = last_step.X()-end_offset[0]+0.7;
+      // sce_end[1] = last_step.Y()+end_offset[1];
+      // sce_end[2] = last_step.Z()+end_offset[2];
+      sce_end[0] = fend[0]-end_offset[0]+0.7;
+      sce_end[1] = fend[1]+end_offset[1];
+      sce_end[2] = fend[2]+end_offset[2];
       Double_t sce_end_xyz[3] = { sce_end[0], sce_end[1], sce_end[2] };
 
       std::vector< int > start_pix(4,0); // (row, u-plane, v-plane, y-plane)

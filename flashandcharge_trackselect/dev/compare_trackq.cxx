@@ -643,7 +643,7 @@ int main( int nargs, char** argv ) {
 #endif
     
     tree->Fill();
-    //break;
+    break;
   }//end of entry loop
 
   rfile->Write();
