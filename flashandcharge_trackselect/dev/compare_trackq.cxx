@@ -453,7 +453,7 @@ int main( int nargs, char** argv ) {
     // std::vector< std::vector<int> > end_pixels;
     // std::vector< std::vector<float> > end_crossingpts;
     std::vector<int> vertex_col(3,-1);
-    std::vector<double> vtx_sce(3,0);    
+    std::vector<double> vtx_sce(3,0);
     int vertex_row = -1;
 
     if ( ismc ) {
@@ -468,7 +468,8 @@ int main( int nargs, char** argv ) {
 
       // loop over MC tracks. Get the truth end points, run thrumu tagger!
       std::cout << ev_mctrack->size() << " = " << xingptdata.mctrack_imgendpoint_indices.size() << std::endl;
-      std::vector< larlitecv::BMTrackCluster3D > mc_recotracks;
+      std::vector< larlitecv::BMTrackCluster3D > mc_recotracks; // mc reco track
+      std::vector< const larlite::opflash* > truth_flash_ptrs; // the flash that goes with each element in mc_recotracks
       for (int itrack=0; itrack<(int)ev_mctrack->size(); itrack++) {
 	// did this track have end points?
 	int nendpts = xingptdata.mctrack_imgendpoint_indices.at(itrack).size();
@@ -536,6 +537,27 @@ int main( int nargs, char** argv ) {
 	      if ( xingptdata.start_crossing_nplanes_w_charge[start_index]>=2 && xingptdata.end_crossing_nplanes_w_charge[end_index]>=2)
 		ntracks_recod_2planeq++;
 	      mc_recotracks.emplace_back( std::move(trackclusters.at(0)) );
+
+	      // get its flash
+	      const std::vector<int>& endpoint_indices = xingptdata.mctrack_imgendpoint_indices[itrack];	      
+	      int flashindex = -1;
+	      if ( endpoint_indices.size()>0 && endpoint_indices[0]!=-1 ) {
+		flashindex = xingptdata.start_crossing_flashindex[ endpoint_indices[0] ];
+	      }
+
+	      const larlite::opflash* popflash = NULL;
+	      if ( flashindex!=-1 ) {
+		int nflash = 0;
+		for ( auto const& evflash_v : event_opflash_v ) {
+		  if ( flashindex < nflash+(int)evflash_v->size() ) {
+		    popflash = &((*evflash_v)[ flashindex-nflash ]);
+		    break;
+		  }
+		  nflash += (int)evflash_v->size();
+		}
+	      }
+
+	      truth_flash_ptrs.push_back( popflash );
 	    }
 	  }
 	  catch ( std::exception& e ) {
@@ -579,6 +601,18 @@ int main( int nargs, char** argv ) {
 	uy_totqdiff = plane_tracktotq[0]-plane_tracktotq[2];
 	vy_totqdiff = plane_tracktotq[1]-plane_tracktotq[2];
 	trackqtree->Fill();
+      }
+      // --------------------------------------------------------------------------------
+
+      // --------------------------------------------------------------------------------
+      // Get Chi-2 of flash hypo from reco track and truth flash
+      int ibmtrack=-1;
+      for ( auto const& bmtrack : mc_recotracks ) {
+	ibmtrack++;
+	const larlite::opflash* popflash = truth_flash_ptrs[ibmtrack];
+	const std::vector<std::vector<double> >& path3d = bmtrack.path3d;
+
+	// CHRIS' CODE GOES HERE
       }
       // --------------------------------------------------------------------------------
       
