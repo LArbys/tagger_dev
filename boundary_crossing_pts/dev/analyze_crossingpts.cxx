@@ -128,7 +128,9 @@ int main( int nargs, char** argv ) {
   // setup output
   TFile* rfile = new TFile(outfname.c_str(), "recreate");
   TTree* tree = new TTree("xingpteventana", "Compare Track Charge");
-  TTree* mcxingpt_tree = new TTree("mcxingptana", "Info on MC Crossing Point");  
+  TTree* mcxingpt_tree = new TTree("mcxingptana", "Info on MC Crossing Point");
+  TTree* mcxingpt_prefilter_tree  = new TTree("mcxingptana_prefilter", "Info on MC Crossing Point");      
+  TTree* mcxingpt_postfilter_tree = new TTree("mcxingptana_postfilter", "Info on MC Crossing Point");    
 
   // Event Indexf
   int run, subrun, event;
@@ -137,7 +139,9 @@ int main( int nargs, char** argv ) {
   larlitecv::TruthData_t truthdata;
   
   // Crossing Point data
-  larlitecv::CrossingPointAnaData_t xingptdata;
+  larlitecv::CrossingPointAnaData_t xingptdata_prefilter;
+  larlitecv::CrossingPointAnaData_t xingptdata_postfilter;
+  larlitecv::CrossingPointAnaData_t xingptdata;  
 
   // Event
   tree->Branch("run",&run,"run/I");
@@ -169,13 +173,16 @@ int main( int nargs, char** argv ) {
   int mcxingpt_wire[3];
   float mcxingpt_dist;
   float mcxingpt_pos[3];
-  mcxingpt_tree->Branch( "truth_type", &mcxingpt_type, "truth_type/I" )
-;  mcxingpt_tree->Branch( "matched", &mcxingpt_matched, "matched/I" );
-  mcxingpt_tree->Branch( "matched_type", &mcxingpt_matched_type, "matched_type/I" );  
-  mcxingpt_tree->Branch( "nplaneswcharge", &mcxingpt_nplaneswcharge, "nplaneswcharge/I" );
-  mcxingpt_tree->Branch( "wire", mcxingpt_wire, "wire[3]/I" );
-  mcxingpt_tree->Branch( "dist", &mcxingpt_dist, "dist/F" );
-  mcxingpt_tree->Branch( "pos", mcxingpt_pos, "pos[3]/F" );
+  TTree* xingpt_trees[3] = { mcxingpt_tree, mcxingpt_prefilter_tree, mcxingpt_postfilter_tree };
+  for ( int i=0; i<3; i++) {
+    xingpt_trees[i]->Branch( "truth_type", &mcxingpt_type, "truth_type/I" );
+    xingpt_trees[i]->Branch( "matched", &mcxingpt_matched, "matched/I" );
+    xingpt_trees[i]->Branch( "matched_type", &mcxingpt_matched_type, "matched_type/I" );  
+    xingpt_trees[i]->Branch( "nplaneswcharge", &mcxingpt_nplaneswcharge, "nplaneswcharge/I" );
+    xingpt_trees[i]->Branch( "wire", mcxingpt_wire, "wire[3]/I" );
+    xingpt_trees[i]->Branch( "dist", &mcxingpt_dist, "dist/F" );
+    xingpt_trees[i]->Branch( "pos", mcxingpt_pos, "pos[3]/F" );
+  }
   
   /// ---------------------------------------------------------------------------------------
   // ALGO SETUP
@@ -247,6 +254,8 @@ int main( int nargs, char** argv ) {
     // initialize the output variables
     truthdata.clear();
     xingptdata.clear();
+    xingptdata_prefilter.clear();
+    xingptdata_postfilter.clear();
     ntracks_2planeq = 0;
     ntracks_recod_2planeq = 0;
     ntracks_all = 0;
@@ -379,6 +388,72 @@ int main( int nargs, char** argv ) {
       larlitecv::extractTruth( *ev_mctruth, *ev_mctrack, truthdata );
     }
 
+      
+    // =======================================================================
+    // MC INFO ANALYSIS
+
+    // quantities filled if MC present
+    std::vector<larcv::Image2D> nupix_imgs_v;
+    // std::vector< std::vector<int> > start_pixels;
+    // std::vector< std::vector<float> > start_crossingpts;
+    // std::vector< std::vector<int> > end_pixels;
+    // std::vector< std::vector<float> > end_crossingpts;
+    std::vector<int> vertex_col(3,-1);
+    std::vector<double> vtx_sce(3,0);
+    int vertex_row = -1;
+
+    if ( ismc ) {
+
+      // loop over MC tracks, get end points of muons
+      larlitecv::analyzeCrossingMCTracks( xingptdata, imgs_v.front().meta(),  imgs_v, ev_trigger, ev_mctrack, event_opflash_v, printFlashEnds );
+      // copy to other structs
+      xingptdata_prefilter = xingptdata;
+      xingptdata_postfilter = xingptdata;
+      
+      int intime_cosmics = xingptdata.true_intime_thrumu + xingptdata.true_intime_stopmu;
+      std::cout << "End points from MC Truth" << std::endl;
+      for (int i=0; i<larlitecv::kNumEndTypes; i++) {
+	std::cout << "  " << spacepoint_producers[i] << ": " << xingptdata.true_crossingpoints[i] << std::endl;
+      }
+      
+      // --------------------------------------------------------------------------------
+      // OPEN CV VISUALIZATION
+#ifdef USE_OPENCV
+      // draw start points
+      for ( int ipt=0; ipt<(int)xingptdata.start_pixels.size(); ipt++) {
+	int row=xingptdata.start_pixels[ipt][0];
+	if (row<0) row = 0;
+	if (row>=(int)imgs_v.front().meta().rows() ) row = (int)imgs_v.front().meta().rows()-1;
+	for (int p=0; p<3; p++) {
+	  int col = xingptdata.start_pixels[ipt][p+1];
+	  if ( col<0 ) col = 0;
+	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
+	  int radius = -1;
+	  if ( xingptdata.start_crossing_nplanes_w_charge[ipt]<=1 )
+	    radius = 1;
+	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0, 0, 255, 255 ), radius );
+	}
+      }
+      // draw end points
+      for ( int ipt=0; ipt<(int)xingptdata.end_pixels.size(); ipt++) {
+	int row=xingptdata.end_pixels[ipt][0];
+	if (row<0) row = 0;
+	if (row>=(int)imgs_v.front().meta().rows() ) row = (int)imgs_v.front().meta().rows()-1;
+	for (int p=0; p<3; p++) {
+	  int col = xingptdata.end_pixels[ipt][p+1];
+	  if ( col<0 ) col = 0;
+	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
+	  int radius = -1;
+	  if ( xingptdata.end_crossing_nplanes_w_charge[ipt]<=1 )
+	    radius = 1;
+	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 0, 0, 255 ), radius );
+	}
+      }
+      // --------------------------------------------------------------------------------      
+#endif
+      
+    } // end of MC functions   
+    
     // =======================================================================
     // RUN RECO ALGO
 
@@ -418,6 +493,9 @@ int main( int nargs, char** argv ) {
     std::cout << "  Cathode: "    << cathode_spacepoint_v.size() << std::endl;
     std::cout << "  Image Ends: " << imgends_spacepoint_v.size() << std::endl;
 
+    // Analyze at this stage
+    
+    
     // run end point filters
     // ---------------------------
     
@@ -443,16 +521,113 @@ int main( int nargs, char** argv ) {
     }
 
     std::cout << "number of endpoints pre-filters: " << all_endpoints.size() << std::endl;
+    std::vector< const std::vector<larlitecv::BoundarySpacePoint>*  > prefilter_spacepoints_v;
+    prefilter_spacepoints_v.push_back( &side_spacepoint_v );
+    prefilter_spacepoints_v.push_back( &anode_spacepoint_v );
+    prefilter_spacepoints_v.push_back( &cathode_spacepoint_v );
+    prefilter_spacepoints_v.push_back( &imgends_spacepoint_v );            
+
+    // --------------------------------------------------------------------------------
+    // DATA vs. MC comparison: pre filter
+
+    if ( ismc ) {
+      // Compare reco and MC crossing point info
+      larlitecv::analyzeCrossingMatches( xingptdata_prefilter, prefilter_spacepoints_v, imgs_v.front().meta(), fMatchRadius );
+
+      // store the data into the tree
+      for (int istartpt=0; istartpt<(int)xingptdata_prefilter.start_type.size(); istartpt++) {
+	mcxingpt_type           = xingptdata_prefilter.start_type[istartpt];
+	mcxingpt_matched        = xingptdata_prefilter.matched_startpoint[istartpt];
+	if ( xingptdata_prefilter.matched_startpoint[istartpt] )
+	  mcxingpt_matched      = 1;
+	else
+	  mcxingpt_matched      = 0;	
+	mcxingpt_matched_type   = xingptdata_prefilter.matched_startpoint_type[istartpt];
+	mcxingpt_nplaneswcharge = xingptdata_prefilter.start_crossing_nplanes_w_charge[istartpt];
+	for (int p=0; p<3; p++) {
+	  mcxingpt_wire[p]      = xingptdata_prefilter.start_pixels[istartpt][p];
+	  mcxingpt_pos[p]       = xingptdata_prefilter.start_crossingpts[istartpt][p];
+	}
+	mcxingpt_dist           = xingptdata_prefilter.start_closest_match_dist[istartpt];
+	mcxingpt_prefilter_tree->Fill();
+      }
+
+      for (int iendpt=0; iendpt<(int)xingptdata_prefilter.end_type.size(); iendpt++) {
+	mcxingpt_type           = xingptdata_prefilter.end_type[iendpt];
+	if ( xingptdata_prefilter.matched_endpoint[iendpt] )
+	  mcxingpt_matched      = 1;
+	else
+	  mcxingpt_matched      = 0;
+	mcxingpt_matched_type   = xingptdata_prefilter.matched_endpoint_type[iendpt];
+	mcxingpt_nplaneswcharge = xingptdata_prefilter.end_crossing_nplanes_w_charge[iendpt];
+	for (int p=0; p<3; p++) {
+	  mcxingpt_wire[p]      = xingptdata_prefilter.end_pixels[iendpt][p];
+	  mcxingpt_pos[p]       = xingptdata_prefilter.end_crossingpts[iendpt][p];
+	}
+	mcxingpt_dist           = xingptdata_prefilter.end_closest_match_dist[iendpt];
+	mcxingpt_prefilter_tree->Fill();
+      }
+    }
+    // ----------------------------------------------------------------------------------
+    
 
     // first filter: radialfilter
     std::vector< const larlitecv::BoundarySpacePoint* > pass_radial_filter;
+    std::vector< larlitecv::BoundarySpacePoint > pass_radial_filter_copy;
     for ( auto const& psp : all_endpoints ) {
       bool forms_segment = radialfilter.canFormSegment( (*psp).pos(), imgs_v, badch_v, 5.0, thresholds_v, 1, 2, 0.5, false ); // need parameters here
-      if ( forms_segment )
+      if ( forms_segment ) {
         pass_radial_filter.push_back( psp );
+	pass_radial_filter_copy.push_back( *psp );
+      }
     }
     std::cout << "number of endpoints post-radial filter: " << pass_radial_filter.size() << std::endl;
+    std::vector< const std::vector<larlitecv::BoundarySpacePoint>* > postfilter_spacepoints_v;
+    postfilter_spacepoints_v.push_back( &pass_radial_filter_copy );
 
+    // --------------------------------------------------------------------------------
+    // DATA vs. MC comparison: post filter
+
+    if ( ismc ) {
+      // Compare reco and MC crossing point info
+      larlitecv::analyzeCrossingMatches( xingptdata_postfilter, postfilter_spacepoints_v, imgs_v.front().meta(), fMatchRadius );
+
+      // store the data into the tree
+      for (int istartpt=0; istartpt<(int)xingptdata_postfilter.start_type.size(); istartpt++) {
+	mcxingpt_type           = xingptdata_postfilter.start_type[istartpt];
+	mcxingpt_matched        = xingptdata_postfilter.matched_startpoint[istartpt];
+	if ( xingptdata_postfilter.matched_startpoint[istartpt] )
+	  mcxingpt_matched      = 1;
+	else
+	  mcxingpt_matched      = 0;	
+	mcxingpt_matched_type   = xingptdata_postfilter.matched_startpoint_type[istartpt];
+	mcxingpt_nplaneswcharge = xingptdata_postfilter.start_crossing_nplanes_w_charge[istartpt];
+	for (int p=0; p<3; p++) {
+	  mcxingpt_wire[p]      = xingptdata_postfilter.start_pixels[istartpt][p];
+	  mcxingpt_pos[p]       = xingptdata_postfilter.start_crossingpts[istartpt][p];
+	}
+	mcxingpt_dist           = xingptdata_postfilter.start_closest_match_dist[istartpt];
+	mcxingpt_postfilter_tree->Fill();
+      }
+
+      for (int iendpt=0; iendpt<(int)xingptdata_postfilter.end_type.size(); iendpt++) {
+	mcxingpt_type           = xingptdata_postfilter.end_type[iendpt];
+	if ( xingptdata_postfilter.matched_endpoint[iendpt] )
+	  mcxingpt_matched      = 1;
+	else
+	  mcxingpt_matched      = 0;
+	mcxingpt_matched_type   = xingptdata_postfilter.matched_endpoint_type[iendpt];
+	mcxingpt_nplaneswcharge = xingptdata_postfilter.end_crossing_nplanes_w_charge[iendpt];
+	for (int p=0; p<3; p++) {
+	  mcxingpt_wire[p]      = xingptdata_postfilter.end_pixels[iendpt][p];
+	  mcxingpt_pos[p]       = xingptdata_postfilter.end_crossingpts[iendpt][p];
+	}
+	mcxingpt_dist           = xingptdata_postfilter.end_closest_match_dist[iendpt];
+	mcxingpt_postfilter_tree->Fill();
+      }
+    }
+    // ----------------------------------------------------------------------------------
+    
     // then we push the end points out
     std::vector< larlitecv::BoundarySpacePoint > pushed_endpoints;
     for ( auto const& psp : pass_radial_filter ) {
@@ -564,67 +739,11 @@ int main( int nargs, char** argv ) {
     filtered_spacepoints_v.push_back( &imgends_filtered_v );
 
     std::cout << "== End of Boundary Tagger ===============================" << std::endl;
-   
-    
-    // =======================================================================
-    // MC INFO ANALYSIS
 
-    // quantities filled if MC present
-    std::vector<larcv::Image2D> nupix_imgs_v;
-    // std::vector< std::vector<int> > start_pixels;
-    // std::vector< std::vector<float> > start_crossingpts;
-    // std::vector< std::vector<int> > end_pixels;
-    // std::vector< std::vector<float> > end_crossingpts;
-    std::vector<int> vertex_col(3,-1);
-    std::vector<double> vtx_sce(3,0);
-    int vertex_row = -1;
+    // ========================================================================================
+    // DATA vs. MC comparison: post filter and move
 
     if ( ismc ) {
-
-      // loop over MC tracks, get end points of muons
-      larlitecv::analyzeCrossingMCTracks( xingptdata, imgs_v.front().meta(),  imgs_v, ev_trigger, ev_mctrack, event_opflash_v, printFlashEnds );
-      int intime_cosmics = xingptdata.true_intime_thrumu + xingptdata.true_intime_stopmu;
-      std::cout << "End points from MC Truth" << std::endl;
-      for (int i=0; i<larlitecv::kNumEndTypes; i++) {
-	std::cout << "  " << spacepoint_producers[i] << ": " << xingptdata.true_crossingpoints[i] << std::endl;
-      }
-      
-      // --------------------------------------------------------------------------------
-      // OPEN CV VISUALIZATION
-#ifdef USE_OPENCV
-      // draw start points
-      for ( int ipt=0; ipt<(int)xingptdata.start_pixels.size(); ipt++) {
-	int row=xingptdata.start_pixels[ipt][0];
-	if (row<0) row = 0;
-	if (row>=(int)imgs_v.front().meta().rows() ) row = (int)imgs_v.front().meta().rows()-1;
-	for (int p=0; p<3; p++) {
-	  int col = xingptdata.start_pixels[ipt][p+1];
-	  if ( col<0 ) col = 0;
-	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
-	  int radius = -1;
-	  if ( xingptdata.start_crossing_nplanes_w_charge[ipt]<=1 )
-	    radius = 1;
-	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0, 0, 255, 255 ), radius );
-	}
-      }
-      // draw end points
-      for ( int ipt=0; ipt<(int)xingptdata.end_pixels.size(); ipt++) {
-	int row=xingptdata.end_pixels[ipt][0];
-	if (row<0) row = 0;
-	if (row>=(int)imgs_v.front().meta().rows() ) row = (int)imgs_v.front().meta().rows()-1;
-	for (int p=0; p<3; p++) {
-	  int col = xingptdata.end_pixels[ipt][p+1];
-	  if ( col<0 ) col = 0;
-	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
-	  int radius = -1;
-	  if ( xingptdata.end_crossing_nplanes_w_charge[ipt]<=1 )
-	    radius = 1;
-	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 0, 0, 255 ), radius );
-	}
-      }
-      // --------------------------------------------------------------------------------      
-#endif
-
       // Compare reco and MC crossing point info
       larlitecv::analyzeCrossingMatches( xingptdata, filtered_spacepoints_v, imgs_v.front().meta(), fMatchRadius );
 
@@ -661,12 +780,9 @@ int main( int nargs, char** argv ) {
 	mcxingpt_dist           = xingptdata.end_closest_match_dist[iendpt];
 	mcxingpt_tree->Fill();
       }
-      
-      
-    } // end of MC functions   
+    }
+    // ===============================================================================================
     
-    
-
     tree->Fill();
 
 #ifdef USE_OPENCV
