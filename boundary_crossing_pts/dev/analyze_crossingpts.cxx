@@ -111,7 +111,8 @@ int main( int nargs, char** argv ) {
   
   bool badch_in_file     = pset.get<bool>("BadChImageInFile");
   std::string trigname   = pset.get<std::string>("TriggerProducerName");
-  std::vector<std::string> flashprod  = pset.get<std::vector<std::string> >("OpFlashProducer");  
+  std::vector<std::string> flashprod  = pset.get<std::vector<std::string> >("OpFlashProducer");
+  float fMatchRadius     = pset.get<float>("MatchRadius");
   bool printFlashEnds    = pset.get<bool>("PrintFlashEnds");
   bool printImages       = pset.get<bool>("PrintImages");
   float fthreshold       = pset.get<float>("PixelThreshold");
@@ -126,7 +127,8 @@ int main( int nargs, char** argv ) {
 
   // setup output
   TFile* rfile = new TFile(outfname.c_str(), "recreate");
-  TTree* tree = new TTree("xingptana", "Compare Track Charge");
+  TTree* tree = new TTree("xingpteventana", "Compare Track Charge");
+  TTree* mcxingpt_tree = new TTree("mcxingptana", "Info on MC Crossing Point");  
 
   // Event Indexf
   int run, subrun, event;
@@ -157,9 +159,23 @@ int main( int nargs, char** argv ) {
   tree->Branch( "ntracks_recod_2planeq", &ntracks_recod_2planeq, "ntracks_recod_2planeq/I" );
   tree->Branch( "ntracks_all", &ntracks_all, "ntracks_all/I" );
   tree->Branch( "ntracks_recod_all", &ntracks_recod_all, "ntracks_recod_all/I" );  
-  
- 
+   
   xingptdata.bindToTree( tree );
+
+  int mcxingpt_type;
+  int mcxingpt_matched;
+  int mcxingpt_matched_type;
+  int mcxingpt_nplaneswcharge;
+  int mcxingpt_wire[3];
+  float mcxingpt_dist;
+  float mcxingpt_pos[3];
+  mcxingpt_tree->Branch( "truth_type", &mcxingpt_type, "truth_type/I" )
+;  mcxingpt_tree->Branch( "matched", &mcxingpt_matched, "matched/I" );
+  mcxingpt_tree->Branch( "matched_type", &mcxingpt_matched_type, "matched_type/I" );  
+  mcxingpt_tree->Branch( "nplaneswcharge", &mcxingpt_nplaneswcharge, "nplaneswcharge/I" );
+  mcxingpt_tree->Branch( "wire", mcxingpt_wire, "wire[3]/I" );
+  mcxingpt_tree->Branch( "dist", &mcxingpt_dist, "dist/F" );
+  mcxingpt_tree->Branch( "pos", mcxingpt_pos, "pos[3]/F" );
   
   /// ---------------------------------------------------------------------------------------
   // ALGO SETUP
@@ -540,6 +556,12 @@ int main( int nargs, char** argv ) {
       }
     }
 
+    // combined vector
+    std::vector< const std::vector<larlitecv::BoundarySpacePoint>* > filtered_spacepoints_v;
+    filtered_spacepoints_v.push_back( &side_filtered_v );
+    filtered_spacepoints_v.push_back( &anode_filtered_v );
+    filtered_spacepoints_v.push_back( &cathode_filtered_v );
+    filtered_spacepoints_v.push_back( &imgends_filtered_v );
 
     std::cout << "== End of Boundary Tagger ===============================" << std::endl;
    
@@ -602,10 +624,61 @@ int main( int nargs, char** argv ) {
       }
       // --------------------------------------------------------------------------------      
 #endif
+
+      // Compare reco and MC crossing point info
+      larlitecv::analyzeCrossingMatches( xingptdata, filtered_spacepoints_v, imgs_v.front().meta(), fMatchRadius );
+
+      // store the data into the tree
+      for (int istartpt=0; istartpt<(int)xingptdata.start_type.size(); istartpt++) {
+	mcxingpt_type           = xingptdata.start_type[istartpt];
+	mcxingpt_matched        = xingptdata.matched_startpoint[istartpt];
+	if ( xingptdata.matched_startpoint[istartpt] )
+	  mcxingpt_matched      = 1;
+	else
+	  mcxingpt_matched      = 0;	
+	mcxingpt_matched_type   = xingptdata.matched_startpoint_type[istartpt];
+	mcxingpt_nplaneswcharge = xingptdata.start_crossing_nplanes_w_charge[istartpt];
+	for (int p=0; p<3; p++) {
+	  mcxingpt_wire[p]      = xingptdata.start_pixels[istartpt][p];
+	  mcxingpt_pos[p]       = xingptdata.start_crossingpts[istartpt][p];
+	}
+	mcxingpt_dist           = xingptdata.start_closest_match_dist[istartpt];
+	mcxingpt_tree->Fill();
+      }
+
+      for (int iendpt=0; iendpt<(int)xingptdata.end_type.size(); iendpt++) {
+	mcxingpt_type           = xingptdata.end_type[iendpt];
+	if ( xingptdata.matched_endpoint[iendpt] )
+	  mcxingpt_matched      = 1;
+	else
+	  mcxingpt_matched      = 0;
+	mcxingpt_matched_type   = xingptdata.matched_endpoint_type[iendpt];
+	mcxingpt_nplaneswcharge = xingptdata.end_crossing_nplanes_w_charge[iendpt];
+	for (int p=0; p<3; p++) {
+	  mcxingpt_wire[p]      = xingptdata.end_pixels[iendpt][p];
+	  mcxingpt_pos[p]       = xingptdata.end_crossingpts[iendpt][p];
+	}
+	mcxingpt_dist           = xingptdata.end_closest_match_dist[iendpt];
+	mcxingpt_tree->Fill();
+      }
+      
       
     } // end of MC functions   
     
+    
+
     tree->Fill();
+
+#ifdef USE_OPENCV
+    if ( printImages ) {
+      for (int p=0; p<3; p++) {
+	cv::Mat& cvimg = cvimgs_v[p];
+	std::stringstream path;
+	path << "boudaryptimgs/tracks_r" << run << "_s" << subrun << "_e" << event << "_p" << p << ".png";
+	cv::imwrite( path.str(), cvimg );
+      }
+    }
+#endif
 
   }//end of entry loop
 
