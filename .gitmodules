@@ -7,3 +7,12 @@
 [submodule "flashandcharge_trackselect/LArCV"]
 	path = flashandcharge_trackselect/LArCV
 	url = https://github.com/larbys/larcv
+[submodule "boundary_crossing_pts/larlitecv"]
+	path = boundary_crossing_pts/larlitecv
+	url = http://github.com/larbys/larlitecv
+[submodule "boundary_crossing_pts/larlite"]
+	path = boundary_crossing_pts/larlite
+	url = http://github.com/larlight/larlite
+[submodule "boundary_crossing_pts/LArCV"]
+	path = boundary_crossing_pts/LArCV
+	url = http://github.com/larbys/larcv
