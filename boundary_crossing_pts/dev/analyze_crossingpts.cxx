@@ -126,7 +126,7 @@ int main( int nargs, char** argv ) {
 
   // setup output
   TFile* rfile = new TFile(outfname.c_str(), "recreate");
-  TTree* tree = new TTree("compareq", "Compare Track Charge");
+  TTree* tree = new TTree("xingptana", "Compare Track Charge");
 
   // Event Indexf
   int run, subrun, event;
