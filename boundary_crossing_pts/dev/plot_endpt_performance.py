@@ -1,7 +1,11 @@
 import os,sys
 import ROOT as rt
 
-rfile = rt.TFile("output_crossingpt_ana.root", "OPEN")
+anafile = "output_crossingpt_ana.root"
+if len(sys.argv)>=2:
+    anafile = sys.argv[1]
+
+rfile = rt.TFile(anafile, "OPEN")
 tree = rfile.Get("mcxingptana_prefilter")
 
 # POS

@@ -113,7 +113,12 @@ int main( int nargs, char** argv ) {
   pos[0] = 128.0;
   pos[1] = ypos;
   pos[2] = 0.5;
-  while ( pos[2]<10.0 ) {
+
+  int num_top_tests = 0;
+  int num_good_top_tests = 0;
+  int num_close_top_tests = 0;
+  
+  while ( pos[2]<1036.0 ) {
 
     // mark pixel
     std::vector<int> imgcoords = larcv::UBWireTool::getProjectedImagePixel( pos, img_v.front().meta(), 3 );
@@ -143,16 +148,38 @@ int main( int nargs, char** argv ) {
       nsides[ sp.at(0).type ]++;
     }
     std::cout << "----------------------------------------------------------------------------------------" << std::endl;
-    std::cout << "Test point (y,z)=(" << pos[1] << "," << pos[2] << ") imgcoords=(" << imgcoords[0] << "," << imgcoords[1] << "," << imgcoords[2] << "," << imgcoords[3] << ")" << std::endl;
+    std::cout << "Test point (x,y,z)=(" << pos[0] << "," << pos[1] << "," << pos[2] << ") "
+	      << "imgcoords=(" << imgcoords[0] << "," << imgcoords[1] << "," << imgcoords[2] << "," << imgcoords[3] << ")" << std::endl;
+    std::cout << "Returned spacepoint (x,y,z)=(" << side_spacepoint_v[0].pos()[0] << "," << side_spacepoint_v[0].pos()[1] << "," << side_spacepoint_v[0].pos()[2] << ")" << std::endl;
     std::cout << "Reconstructed Side Tagger End Points: " << side_spacepoint_v.size() << std::endl;
     std::cout << "   Top: "        << nsides[0] << std::endl;
     std::cout << "   Bottom: "     << nsides[1] << std::endl;
     std::cout << "   Upstream: "   << nsides[2] << std::endl;
     std::cout << "   Downstream: " << nsides[3] << std::endl;
+    
+    if ( nsides[0]>0 ) {
+      if (nsides[0]==1)
+	num_good_top_tests++;
+      
+      float dist = 0.;
+      for (int i=0; i<3; i++) {
+	dist += (pos[i]-side_spacepoint_v[0].pos()[i])*(pos[i]-side_spacepoint_v[0].pos()[i]);
+      }
+      dist = sqrt(dist);
+      std::cout << "  dist to point: " << dist << std::endl;
+      if ( dist<1.0 )
+	num_close_top_tests++;
+    }
+      
 
     pos[2] += 0.3;
+
+    num_top_tests++;
   }
-  
+
+  std::cout << "Num of Top Tests: " << num_top_tests << std::endl;
+  std::cout << "Num that returned 1 spacepoint: " << num_good_top_tests << std::endl;
+  std::cout << "Num where space point with 1 cm: " << num_close_top_tests << std::endl;
   
   return 0;
 }

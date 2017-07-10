@@ -63,6 +63,9 @@
 #include "Base/DataCoordinator.h"
 #include "ChargeSegmentAlgos/PathPixelChargeMethods.h"
 
+// dev
+#include "BMTCV.h"
+
 int main( int nargs, char** argv ) {
   
   std::cout << "COMPARE TRACK CHARGE" << std::endl;
@@ -208,6 +211,9 @@ int main( int nargs, char** argv ) {
   fmt_cathode.configure( fmt_cfg );
   fmt_imageend.configure( fmt_cfg );
 
+  // BMT CV
+  larlitecv::BMTCV bmtcv_algo;
+  
   // Filters
   
   larlitecv::RadialEndpointFilter radialfilter;  // remove end points that cannot form a 3d segment nearby
@@ -482,12 +488,38 @@ int main( int nargs, char** argv ) {
 
     std::cout << "== Run Crossing point algorithms ===============================" << std::endl;
 
+    // preprocess test
+    // binarize and blur image
+    std::vector<larcv::Image2D> binblur_v;
+    for (auto const& img : imgs_v ) {
+      larcv::Image2D bbimg( img );
+      bbimg.paint(0);
+      for (int row=0; row<(int)img.meta().rows(); row++) {
+	for (int col=0; col<(int)img.meta().cols(); col++) {
+	  if ( img.pixel(row,col)>fthreshold ) {
+	    for (int dr=-2; dr<=2; dr++) {
+	      int r = row+dr;
+	      if ( r<0 || r>=(int)img.meta().rows() )
+		continue;
+	      for (int dc=-2; dc<=2; dc++) {
+		int c = col+dc;
+		if ( c<0 || c>=(int)img.meta().cols() )
+		  continue;
+		bbimg.set_pixel( r, c, 255 );
+	      }
+	    }
+	  }
+	}
+      }//end of row loop
+      binblur_v.emplace_back( std::move(bbimg) );
+    }//end of img loop
+    
     // run side tagger
     //timer = std::clock();
     std::vector< larlitecv::BoundarySpacePoint > side_spacepoint_v;
     std::vector< larcv::Image2D> boundarypixel_image_v;
     std::vector< larcv::Image2D> realspacehit_image_v;
-    bmt.searchforboundarypixels3D( imgs_v, badch_v, side_spacepoint_v, boundarypixel_image_v, realspacehit_image_v );
+    bmt.searchforboundarypixels3D( binblur_v, badch_v, side_spacepoint_v, boundarypixel_image_v, realspacehit_image_v );
     int nsides[4] = {0};
     for ( auto const& sp : side_spacepoint_v ) {
       nsides[ sp.at(0).type ]++;
@@ -542,7 +574,21 @@ int main( int nargs, char** argv ) {
     prefilter_spacepoints_v.push_back( &side_spacepoint_v );
     prefilter_spacepoints_v.push_back( &anode_spacepoint_v );
     prefilter_spacepoints_v.push_back( &cathode_spacepoint_v );
-    prefilter_spacepoints_v.push_back( &imgends_spacepoint_v );            
+    prefilter_spacepoints_v.push_back( &imgends_spacepoint_v );
+
+    // --------------------------------------------------------------------------------
+    // RECO DEV:
+    // BMTCV
+
+    std::vector< larlitecv::BoundarySpacePoint > bmtcv_sp_v = bmtcv_algo.findBoundarySpacePoints( imgs_v, badch_v );
+    // dump the images
+    // print
+    for (int p=0; p<3; p++) {
+      std::stringstream path;
+      path << "boundaryptimgs/cvbmt_r" << run << "_s" << subrun << "_e" << event << "_p" << p << ".png";
+      cv::imwrite( path.str(), bmtcv_algo.cvimg_stage0_v[p] );
+    }
+    
     
     // --------------------------------------------------------------------------------
     // DATA vs. MC comparison: pre filter

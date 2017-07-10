@@ -23,7 +23,7 @@ LDFLAGS += `root-config --ldflags --libs`
 LIB=libCrossingPtsAna.so
 BINARIES = analyze_crossingpts bmt_unittest
 BINSRCS = $(addsuffix .cxx,$(BINARIES))
-SOURCES = 
+SOURCES = BMTCV.cxx
 OBJS = $(SOURCES:.cxx=.o)
 
 all: $(LIB) $(BINARIES)
