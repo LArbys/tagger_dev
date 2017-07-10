@@ -21,7 +21,7 @@ LDFLAGS += $(shell larlitecv-config --libs)
 LDFLAGS += `root-config --ldflags --libs`
 
 LIB=libCrossingPtsAna.so
-BINARIES = analyze_crossingpts
+BINARIES = analyze_crossingpts bmt_unittest
 BINSRCS = $(addsuffix .cxx,$(BINARIES))
 SOURCES = 
 OBJS = $(SOURCES:.cxx=.o)
@@ -37,6 +37,9 @@ libCrossingPtsAna.so: $(OBJS)
 	$(CXX) -shared -o $@ $^ $(LDFLAGS)
 
 analyze_crossingpts: analyze_crossingpts.cxx $(LIB)
+	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS) $(LIB)
+
+bmt_unittest: bmt_unittest.cxx $(LIB)
 	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS) $(LIB)
 
 clean:
