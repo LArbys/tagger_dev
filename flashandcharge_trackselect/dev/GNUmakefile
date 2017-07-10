@@ -24,7 +24,7 @@ LIB=libFQDev.so
 BINARIES = compare_trackq compare_flashmatch
 BINSRCS = $(addsuffix .cxx,$(BINARIES))
 #SOURCES = $(filter-out $(BINSRCS), $(wildcard *.cxx))
-SOURCES = crossingPointsAnaMethods.cxx extractTruthMethods.cxx
+SOURCES = 
 OBJS = $(SOURCES:.cxx=.o)
 
 all: $(LIB) $(BINARIES)
