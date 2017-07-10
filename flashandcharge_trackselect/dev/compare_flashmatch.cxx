@@ -37,8 +37,8 @@
 #include "TaggerTypes/BMTrackCluster3D.h"
 #include "TaggerTypes/Path2Pixels.h"
 #include "ThruMu/ThruMuTracker.h"
-#include "extractTruthMethods.h"
-#include "crossingPointsAnaMethods.h"
+#include "MCTruthTools/extractTruthMethods.h"
+#include "MCTruthTools/crossingPointsAnaMethods.h"
 
 
 // OpenCV
