@@ -14,6 +14,7 @@
 #include "Base/PSet.h"
 #include "Base/LArCVBaseUtilFunc.h"
 #include "UBWireTool/UBWireTool.h"
+#include "SCE/SpaceChargeMicroBooNE.h"
 
 // larlite
 // #include "DataFormat/mctruth.h"
@@ -36,6 +37,7 @@
 #include "TaggerTypes/BoundarySpacePoint.h"
 #include "TaggerTypes/BMTrackCluster3D.h"
 #include "TaggerTypes/Path2Pixels.h"
+#include "TaggerTypes/dwall.h"
 
 #include "ThruMu/BoundaryMuonTaggerAlgoConfig.h"
 #include "ThruMu/BoundaryMuonTaggerAlgo.h"
@@ -172,6 +174,7 @@ int main( int nargs, char** argv ) {
   int mcxingpt_nplaneswcharge;
   int mcxingpt_wire[3];
   float mcxingpt_dist;
+  float mcxingpt_dwall;
   float mcxingpt_pos[3];
   TTree* xingpt_trees[3] = { mcxingpt_tree, mcxingpt_prefilter_tree, mcxingpt_postfilter_tree };
   for ( int i=0; i<3; i++) {
@@ -181,6 +184,7 @@ int main( int nargs, char** argv ) {
     xingpt_trees[i]->Branch( "nplaneswcharge", &mcxingpt_nplaneswcharge, "nplaneswcharge/I" );
     xingpt_trees[i]->Branch( "wire", mcxingpt_wire, "wire[3]/I" );
     xingpt_trees[i]->Branch( "dist", &mcxingpt_dist, "dist/F" );
+    xingpt_trees[i]->Branch( "dwall", &mcxingpt_dwall, "dwall/F" );    
     xingpt_trees[i]->Branch( "pos", mcxingpt_pos, "pos[3]/F" );
   }
   
@@ -210,6 +214,9 @@ int main( int nargs, char** argv ) {
   larlitecv::PushBoundarySpacePoint endptpusher; // remove endpt
   larlitecv::EndPointFilter endptfilter; // removes duplicates
 
+  // space charge correctinos
+  larlitecv::SpaceChargeMicroBooNE sce;
+  
   // -----------------------------------------------------------------------------------------
 
   int nentries = dataco[kCROIfile].get_nentries("larcv");
@@ -267,20 +274,24 @@ int main( int nargs, char** argv ) {
     // get the original, segmentation, and tagged images
     larcv::EventImage2D* ev_imgs   = (larcv::EventImage2D*)dataco[kSource].get_larcv_data(larcv::kProductImage2D,inputimgs);
     larcv::EventImage2D* ev_badch  = NULL;
+    larcv::EventImage2D* ev_gapch  = NULL;    
     larcv::EventImage2D* ev_segs   = NULL;
     if ( ismc ) {
       ev_segs = (larcv::EventImage2D*)dataco[kSource].get_larcv_data(larcv::kProductImage2D,"segment");
     }
     if ( badch_in_file ) {
       // we either get the badch from the file
-      ev_badch = (larcv::EventImage2D*)dataco[kCROIfile].get_larcv_data(larcv::kProductImage2D,"gapchs");
+      ev_gapch = (larcv::EventImage2D*)dataco[kCROIfile].get_larcv_data(larcv::kProductImage2D,"gapchs");
     }
     else {
       // or we have to make the badch image from a ChStatus object
-      larcv::EventChStatus* ev_status = (larcv::EventChStatus*)dataco[kSource].get_larcv_data( larcv::kProductChStatus, "tpc" );
+      larcv::EventChStatus* ev_status = (larcv::EventChStatus*)dataco[kSource].get_larcv_data( larcv::kProductChStatus, "wire" );
       std::vector<larcv::Image2D> chstatus_img_v = emptyalgo.makeBadChImage( 4, 3, 2400, 6048, 3456, 6, 1, *ev_status );
+      std::vector<larcv::Image2D> gapch_v = emptyalgo.findMissingBadChs( ev_imgs->Image2DArray(), chstatus_img_v, 10.0, 5 );
       ev_badch = new larcv::EventImage2D;
       ev_badch->Emplace( std::move(chstatus_img_v) );
+      ev_gapch = new larcv::EventImage2D;
+      ev_gapch->Emplace( std::move(gapch_v) );
     }
     
     // // get the output of the tagger
@@ -429,9 +440,15 @@ int main( int nargs, char** argv ) {
 	  if ( col<0 ) col = 0;
 	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
 	  int radius = -1;
-	  if ( xingptdata.start_crossing_nplanes_w_charge[ipt]<=1 )
+	  if ( xingptdata.start_crossing_nplanes_w_charge[ipt]<=2 )
 	    radius = 1;
-	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0, 0, 255, 255 ), radius );
+	  if ( xingptdata.start_type[ipt]==4 || xingptdata.start_type[ipt]==5 )
+	    cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0, 255, 255, 255 ), radius );
+	  else
+	    cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0,   0, 255, 255 ), radius );
+	  std::stringstream ptname;
+	  ptname << "#S" << ipt;
+	  cv::putText( cvimgs_v[p], cv::String(ptname.str()), cv::Point( col+2, row+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,255,255,255) );
 	}
       }
       // draw end points
@@ -444,9 +461,15 @@ int main( int nargs, char** argv ) {
 	  if ( col<0 ) col = 0;
 	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
 	  int radius = -1;
-	  if ( xingptdata.end_crossing_nplanes_w_charge[ipt]<=1 )
+	  if ( xingptdata.end_crossing_nplanes_w_charge[ipt]<=2 )
 	    radius = 1;
-	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 0, 0, 255 ), radius );
+	  if ( xingptdata.start_type[ipt]==4 || xingptdata.start_type[ipt]==5 )
+	    cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 255, 0, 255 ), radius );
+	  else
+	    cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 0, 0, 255 ), radius );
+	  std::stringstream ptname;
+	  ptname << "#E" << ipt;	  
+	  cv::putText( cvimgs_v[p], cv::String(ptname.str()), cv::Point( col+2, row+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,255,255,255) );	  
 	}
       }
       // --------------------------------------------------------------------------------      
@@ -492,12 +515,6 @@ int main( int nargs, char** argv ) {
     std::cout << "  Anode: "      << anode_spacepoint_v.size() << std::endl;
     std::cout << "  Cathode: "    << cathode_spacepoint_v.size() << std::endl;
     std::cout << "  Image Ends: " << imgends_spacepoint_v.size() << std::endl;
-
-    // Analyze at this stage
-    
-    
-    // run end point filters
-    // ---------------------------
     
     // we collect pointers to all the end points
     std::vector< const larlitecv::BoundarySpacePoint* > all_endpoints;
@@ -526,7 +543,7 @@ int main( int nargs, char** argv ) {
     prefilter_spacepoints_v.push_back( &anode_spacepoint_v );
     prefilter_spacepoints_v.push_back( &cathode_spacepoint_v );
     prefilter_spacepoints_v.push_back( &imgends_spacepoint_v );            
-
+    
     // --------------------------------------------------------------------------------
     // DATA vs. MC comparison: pre filter
 
@@ -549,6 +566,13 @@ int main( int nargs, char** argv ) {
 	  mcxingpt_pos[p]       = xingptdata_prefilter.start_crossingpts[istartpt][p];
 	}
 	mcxingpt_dist           = xingptdata_prefilter.start_closest_match_dist[istartpt];
+	std::vector<double> sce_offsets = sce.GetPosOffsets( mcxingpt_pos[0], mcxingpt_pos[1], mcxingpt_pos[2] );
+	std::vector<float> pos_sce(3,0);
+	pos_sce[0] = mcxingpt_pos[0] - sce_offsets[0] + 0.7;
+	pos_sce[1] = mcxingpt_pos[1] + sce_offsets[1];
+	pos_sce[2] = mcxingpt_pos[2] + sce_offsets[2];
+	int btype = 0;
+	mcxingpt_dwall = larlitecv::dwall( pos_sce, btype );
 	mcxingpt_prefilter_tree->Fill();
       }
 
@@ -565,10 +589,166 @@ int main( int nargs, char** argv ) {
 	  mcxingpt_pos[p]       = xingptdata_prefilter.end_crossingpts[iendpt][p];
 	}
 	mcxingpt_dist           = xingptdata_prefilter.end_closest_match_dist[iendpt];
+	std::vector<double> sce_offsets = sce.GetPosOffsets( mcxingpt_pos[0], mcxingpt_pos[1], mcxingpt_pos[2] );
+	std::vector<float> pos_sce(3,0);
+	pos_sce[0] = mcxingpt_pos[0] - sce_offsets[0] + 0.7;
+	pos_sce[1] = mcxingpt_pos[1] + sce_offsets[1];
+	pos_sce[2] = mcxingpt_pos[2] + sce_offsets[2];
+	int btype = 0;
+	mcxingpt_dwall = larlitecv::dwall( pos_sce, btype );	
 	mcxingpt_prefilter_tree->Fill();
       }
+
+
+      // analyze substages of boundary end point analysis
+      // we check if the true crossing point locations in the image were
+      // marked by the BoundaryMatchAlgo substage
+      // for (int istartpt=0; istartpt<(int)xingptdata_prefilter.start_type.size(); istartpt++) {
+      // }
+      
     }
+
+    // ---------------------------------------------------------------------------------
+    // DRAW RESULTS
+#ifdef USE_OPENCV
+    // DRAW THE CROSSING POINTS
+    for ( auto const& p_sp_v : prefilter_spacepoints_v ) {
+      for ( auto const& sp : *p_sp_v ) {
+	for (int p=0; p<3; p++) {
+	  auto const& cvimg = cvimgs_v[p];
+	  auto const& endpt = sp.at(p);
+	  cv::circle( cvimg, cv::Point(endpt.col,endpt.row), 3, cv::Scalar( 0, 255, 0, 255 ), -1 );
+	}
+      }
+    }
+
+    // DRAW THE BOUNDARY POINTS IMAGES
+    std::cout << "BoundaryPixel Images: " << boundarypixel_image_v.size() << std::endl;
+    std::cout << "RealSpaceHit Images: " << realspacehit_image_v.size()  << std::endl;    
+    std::vector<cv::Mat> cvboundarypix_v;
+    std::vector<cv::Mat> cvrealspace_v;        
+    if ( printImages ) {
+      for ( auto const& img : imgs_v ) {
+	cv::Mat cvimg = larcv::as_mat_greyscale2bgr( img, fthreshold, 100.0 );
+	cvboundarypix_v.emplace_back(std::move(cvimg));
+      }
+
+      int type_colors[4][3] = { {204,204,255}, // top
+				{255,229,204}, // bot
+				{153,204,255}, // upstream
+				{205,255,255} }; // downstream
+      for (int itype=0; itype<4; itype++) {
+	for (int p=0; p<3; p++) {
+	  auto const& bp_img = boundarypixel_image_v.at(itype*3+p);
+	  auto & cv_img = cvboundarypix_v.at(p);
+	  for (size_t row=0; row<bp_img.meta().rows(); row++) {
+	    for (size_t col=0; col<bp_img.meta().cols(); col++) {
+	      if ( bp_img.pixel(row,col)>0 ) {
+		for (int i=0; i<3; i++)
+		  cv_img.at<cv::Vec3b>( cv::Point(col,row) )[i] = type_colors[itype][i];
+	      }
+	    }//end of col loop
+	  }//end of row loop
+	}//end of plane loop
+      }//end of type loop
+
+      // print
+      for (int p=0; p<3; p++) {
+	std::stringstream path;
+	path << "boundaryptimgs/boundarypix_r" << run << "_s" << subrun << "_e" << event << "_p" << p << ".png";
+	cv::imwrite( path.str(), cvboundarypix_v[p] );
+      }
+
+      for ( auto const& img : realspacehit_image_v ) {
+	cv::Mat cvimg = larcv::as_mat_greyscale2bgr( img, 0, 3.0 );
+	cvrealspace_v.emplace_back(std::move(cvimg));
+      }
+
+      if ( ismc ) {
+	// draw start points
+	for ( int ipt=0; ipt<(int)xingptdata.start_pixels.size(); ipt++) {
+	  int itype = xingptdata.start_type[ipt];
+	  if ( itype>=4 )
+	    continue;
+	  std::vector<float> crossingpt = xingptdata.start_crossingpts.at(ipt);
+	  std::vector<double> offsets   = sce.GetPosOffsets( crossingpt[0], crossingpt[1], crossingpt[2] );
+	  std::vector<float> crossingpt_sce(3,0);
+	  crossingpt_sce[0] = crossingpt[0] - offsets[0] + 0.7;
+	  crossingpt_sce[1] = crossingpt[1] + offsets[1];
+	  crossingpt_sce[2] = crossingpt[2] + offsets[2];	  
+	  std::vector<int>   crossingpx = xingptdata.start_pixels.at(ipt);	  
+
+	  float x = 0;
+	  if ( itype==0 || itype==1 ) {
+	    // top and bottom
+	    x = crossingpt_sce[2];
+	  }
+	  else {
+	    // upstream downstream
+	    x = crossingpt_sce[1]+117.0;
+	  }
+	  int row=crossingpx[0];
+	  
+	  if ( xingptdata_prefilter.matched_startpoint[ipt]==1 )
+	    cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 0, 0, 255, 255 ), 2.0 );
+	  else
+	    cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 255, 0, 255, 255 ), 2.0 );
+
+	  std::stringstream ptname;
+	  ptname << "#S" << ipt;	  
+	  cv::putText( cvrealspace_v[itype], cv::String(ptname.str()), cv::Point( x+2, row+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,255,255,255) );	  	  	  
+	}
+      
+	// draw end points
+	for ( int ipt=0; ipt<(int)xingptdata.end_pixels.size(); ipt++) {
+	  int itype = xingptdata.end_type[ipt];
+	  if ( itype>=4 )
+	    continue;
+	  std::vector<float> crossingpt = xingptdata.end_crossingpts.at(ipt);
+	  std::vector<double> offsets   = sce.GetPosOffsets( crossingpt[0], crossingpt[1], crossingpt[2] );
+	  std::vector<float> crossingpt_sce(3,0);
+	  crossingpt_sce[0] = crossingpt[0] - offsets[0] + 0.7;
+	  crossingpt_sce[1] = crossingpt[1] + offsets[1];
+	  crossingpt_sce[2] = crossingpt[2] + offsets[2];
+	  std::vector<int>   crossingpx = xingptdata.end_pixels.at(ipt);	  
+	  
+	  float x = 0;
+	  if ( itype==0 || itype==1 ) {
+	    // top and bottom
+	    x = crossingpt_sce[2];
+	  }
+	  else {
+	    // upstream downstream
+	    x = crossingpt_sce[1]+117.0;
+	  }
+	  int row=crossingpx[0];
+
+	  if ( xingptdata_prefilter.matched_endpoint[ipt]==1 )
+	    cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 255, 0, 0, 255 ), 2.0 );
+	  else
+	    cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 125, 125, 255, 255 ), 2.0 );
+	  std::stringstream ptname;
+	  ptname << "#E" << ipt;	  
+	  cv::putText( cvrealspace_v[itype], cv::String(ptname.str()), cv::Point( x+2, row+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,255,255,255) );	  	  
+	}	
+      }
+      
+      // print
+      for (int p=0; p<4; p++) {
+	std::stringstream path;
+	path << "boundaryptimgs/realspace_r" << run << "_s" << subrun << "_e" << event << "_side" << p << ".png";
+	cv::imwrite( path.str(), cvrealspace_v[p] );
+      }
+      
+    }//end of if print images
+#endif
     // ----------------------------------------------------------------------------------
+    // End of Reco Algorithms
+    // =======================================================================    
+
+    // =======================================================================    
+    // RUN END POINT FILTERES
+    // ----------------------
     
 
     // first filter: radialfilter
@@ -790,7 +970,7 @@ int main( int nargs, char** argv ) {
       for (int p=0; p<3; p++) {
 	cv::Mat& cvimg = cvimgs_v[p];
 	std::stringstream path;
-	path << "boudaryptimgs/tracks_r" << run << "_s" << subrun << "_e" << event << "_p" << p << ".png";
+	path << "boundaryptimgs/tracks_r" << run << "_s" << subrun << "_e" << event << "_p" << p << ".png";
 	cv::imwrite( path.str(), cvimg );
       }
     }
