@@ -18,7 +18,14 @@
 #include <opencv2/core/core.hpp>
 #endif
 
+
+
 namespace larlitecv {
+
+  typedef std::vector<cv::Point> Contour_t;
+  typedef std::vector< Contour_t > ContourList_t;
+  typedef std::vector< int > ContourIndices_t;
+  typedef std::vector< cv::Vec4i > Defects_t;
 
   class BMTCV {
   public:

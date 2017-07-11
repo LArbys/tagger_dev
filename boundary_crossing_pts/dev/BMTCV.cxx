@@ -4,10 +4,15 @@
 #include "CVUtil/CVUtil.h"
 #endif
 
+#include "TRandom3.h"
+
 namespace larlitecv {
 
   std::vector<larlitecv::BoundarySpacePoint> BMTCV::findBoundarySpacePoints( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v ) {
+    
     std::vector<larlitecv::BoundarySpacePoint> sp_v;
+    TRandom3 rand(1983);
+    
     // ------------------------------------------------------------------------
     // NO OPENCV
 #ifndef USE_OPENCV
@@ -29,6 +34,7 @@ namespace larlitecv {
       cvimg_stage1_v.emplace_back( std::move(thresh) );
     }
 
+    /*
     // chop into time slices, find contours, find ends
     int sliceheight = 24;
     int nslices = 1008/sliceheight;
@@ -49,10 +55,69 @@ namespace larlitecv {
 	}
       }
     }
+    */
+
+
+    std::vector< ContourList_t > plane_contours_v;
+    std::vector< std::vector<ContourIndices_t> > plane_hulls_v;
+    std::vector< std::vector<Defects_t> > plane_defects_v;
+    for (int p=0; p<3; p++) {
+      // dilate image first
+      cv::Mat& cvimg = cvimg_stage1_v[p];
+      cv::dilate( cvimg, cvimg, cv::Mat(), cv::Point(-1,-1), 2, 1, 1 );
+      
+      // find contours
+      ContourList_t contour_v;
+      cv::findContours( cvimg_stage1_v[p], contour_v, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE );
+
+      std::cout << "Plane " << p << " number of contours: " << contour_v.size() << std::endl;
+      
+      // for each contour, find convex hull, find defect points
+      std::vector< ContourIndices_t > hull_v( contour_v.size() );
+      std::vector< Defects_t > defects_v( contour_v.size() );
+      for ( int idx=0; idx<(int)contour_v.size(); idx++ ) {
+
+	Contour_t& contour = contour_v[idx];
+	if ( contour.size()<10 )
+	  continue;
+	
+	// draw contours
+	cv::drawContours( cvimg_stage0_v[p], contour_v, idx, cv::Scalar( rand.Uniform(10,255),rand.Uniform(10,255),rand.Uniform(10,255),255), 1 );	
+	
+	// convex hull
+	cv::convexHull( cv::Mat( contour ), hull_v[idx], false );
+
+	if ( hull_v[idx].size()<=3 ) {
+	  // store 
+	  continue; // no defects can be found
+	}
+
+	// defects
+	cv::convexityDefects( contour, hull_v[idx], defects_v[idx] );
+
+	// plot defect point information
+	for ( auto& defectpt : defects_v[idx] ) {
+	  float depth = defectpt[3]/256;
+	  if ( depth>3 ) {
+	    int faridx = defectpt[2];
+	    cv::Point ptFar( contour[faridx] );
+	    cv::circle( cvimg_stage0_v[p], ptFar, 1, cv::Scalar(0,255,0,255), -1 );
+	  }
+	}
+
+      }
+      plane_contours_v.emplace_back( std::move(contour_v) );
+      plane_hulls_v.emplace_back( std::move(hull_v) );
+      plane_defects_v.emplace_back( std::move(defects_v) );
+    }
+
+    // convex hulls
     
     return sp_v;
 #endif
     
   }// end of findBoundarySpacePoints
+
+  //void breakContour( 
   
 }
