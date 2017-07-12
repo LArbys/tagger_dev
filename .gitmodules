@@ -16,3 +16,9 @@
 [submodule "boundary_crossing_pts/LArCV"]
 	path = boundary_crossing_pts/LArCV
 	url = http://github.com/larbys/larcv
+[submodule "boundary_crossing_pts/Geo2D"]
+	path = boundary_crossing_pts/Geo2D
+	url = http://github.com/LArbys/Geo2D
+[submodule "boundary_crossing_pts/LArOpenCV"]
+	path = boundary_crossing_pts/LArOpenCV
+	url = http://github.com/NevisUB/LArOpenCV

@@ -11,10 +11,10 @@ source $BMT_TAGGERDEV_BASEDIR/setup.sh
 source $BMT_TAGGERDEV_BASEDIR/larlite/config/setup.sh
 
 # setup laropencv
-#source $BMT_TAGGERDEV_BASEDIR/LArOpenCV/setup_laropencv.sh
+source $BMT_TAGGERDEV_BASEDIR/LArOpenCV/setup_laropencv.sh
 
 # setup Geo2D
-#source $BMT_TAGGERDEV_BASEDIR/Geo2D/config/setup.sh
+source $BMT_TAGGERDEV_BASEDIR/Geo2D/config/setup.sh
 
 # setup LArCV
 source $BMT_TAGGERDEV_BASEDIR/LArCV/configure.sh
