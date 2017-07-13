@@ -28,6 +28,7 @@
 // #include "DataFormat/track.h"
 // #include "LArUtil/LArProperties.h"
 #include "LArUtil/Geometry.h"
+#include "LArUtil/LArProperties.h"
 
 // larlitecv
 #include "Base/DataCoordinator.h"
@@ -695,12 +696,13 @@ int main( int nargs, char** argv ) {
       qcluster_v = flash_match_obj.GenerateQCluster_vector(larlite_track_vec);
 
       // Now, compare the length of this list to the length of the 'truth_flash_ptrs'.                                                                                                   
-      // Now, compare the length of this list to the length of the 'truth_flash_ptrs'.
-
       // Print out the event iterator.                                                                                                                                                                
       std::cout << "The event iterator is currently at " << ientry << "." << std::endl;
       std::cout << "The size of the qcluster vector = " << qcluster_v.size() << "." << std::endl;
       std::cout << "The size of the truth_flash_ptrs vector = " << truth_flash_ptrs.size() <<   "." << std::endl;
+
+      // Declare the number of cm/tick outside the loop.
+      const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
 
       // Loop through these tracks and find the flash hypothesis for each of the qcluster values. \
       // Set the value of 'track_idx'.
@@ -708,18 +710,42 @@ int main( int nargs, char** argv ) {
 
       for ( size_t qcluster_iter = 0; qcluster_iter < qcluster_v.size(); qcluster_iter++ ) {
 
-	track_idx++;
-
-	// Continue if the flash pointer at this value is NULL.
-	if (truth_flash_ptrs.at(qcluster_iter) == NULL) {
-	  std::cout << "This vector is NULL!" << std::endl;
-	  continue;
-	}
-	
 	// Set an object equal to 'truth_flash_ptr' at position 'qcluster_iter'.
 	const larlite::opflash* data_opflash_pointer = truth_flash_ptrs.at(qcluster_iter);
+
+	// Continue if the flash pointer at this value is NULL
+	if (truth_flash_ptrs.at(qcluster_iter) == NULL) {
+          std::cout << "This vector is NULL!" << std::endl;
+          continue;
+        }
+
+	// If this is true, then find the object that the pointer points to.
 	const larlite::opflash  data_opflash         = *data_opflash_pointer;
 
+	
+	//********* Code for shifting the x-coordinate of the qcluster first.****************
+
+	// Find the x-position of the opflash object that corresponds to this qcluster.
+	// Shift the coordinate by the time of the flash.
+	int flash_tick         = (3200.0+data_opflash.Time()/0.5);
+
+	// Convert the tick to a time.
+	double flash_position  = flash_tick*cm_per_tick;
+
+	// Loop through this value of the qcluster and correct each of the points.
+	for ( size_t qcluster_point_iter = 0; qcluster_point_iter < qcluster_v.at(qcluster_iter).size(); qcluster_point_iter++ ) {
+
+	  // Find the x-coordinate of the first point.
+	  qcluster_v.at(qcluster_iter).at(qcluster_point_iter).x -= flash_position;
+	  //std::cout << "Correcting the x-position of the qcluster coordinate." << std::endl;
+
+	}
+
+	 //********* End Code for shifting the x-coordinate of the qcluster first.****************
+
+	
+	track_idx++;
+	
 	float total_pe = 0.0;
 
 	for ( size_t iter = 0; iter < (geo->NOpDets()); iter++ ) {
@@ -738,7 +764,7 @@ int main( int nargs, char** argv ) {
 	std::cout << "qcluster iter = " << qcluster_iter << "." << std::endl;
 
 	// Only do this on a track-by-track-basis. Start with the first track of the first event.
-	if (event_idx == 0 && qcluster_iter == 5) {
+	if (event_idx == 0 && qcluster_iter == 2) {
 	  std::cout << "The previous set of PE information is being used to fill the histogram!!" << std::endl;
 	  // For both the data and the truth, plot the number of PEs in each phototube in the detector.
 	  // Convert both of them to data flashes first.
@@ -770,7 +796,6 @@ int main( int nargs, char** argv ) {
 
 	  // Continue if 'fake_iter' and 'qcluster_iter' have the same value.
 	  if ( fake_iter == qcluster_iter ) continue;
-
 
 	  // Declare 'data_opflash_pointer_fake up here'.
 	  const larlite::opflash* data_opflash_pointer_fake = NULL;
