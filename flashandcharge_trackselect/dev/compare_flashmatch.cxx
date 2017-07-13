@@ -21,7 +21,7 @@
 // #include "DataFormat/mctruth.h"
 // #include "DataFormat/mcpart.h"
 // #include "DataFormat/mctrajectory.h"
-// #include "DataFormat/mctrack.h"
+#include "DataFormat/mctrack.h"
 // #include "DataFormat/mcshower.h"
 // #include "DataFormat/simch.h"
 #include "DataFormat/trigger.h"
@@ -299,8 +299,8 @@ int main( int nargs, char** argv ) {
   larlitecv::FlashMuonTaggerAlgo cathode_flash_tagger( larlitecv::FlashMuonTaggerAlgo::kCathode );
 
   // Make an object of type 'FlashMuonTaggerAlgoConfig' and configure it with the default values.
-  larlitecv::FlashMuonTaggerAlgoConfig flash_tagger_config;
-  flash_tagger_config.setdefaults();
+  larcv::PSet flash_tagger_pset = pset.get<larcv::PSet>("BMTFlashTagger");
+  larlitecv::FlashMuonTaggerAlgoConfig flash_tagger_config = larlitecv::MakeFlashMuonTaggerAlgoConfigFromPSet( flash_tagger_pset );
 
   // Configure the two objects of type 'FlashMuonTaggerAlgo' above.
   anode_flash_tagger.configure( flash_tagger_config );
@@ -532,7 +532,9 @@ int main( int nargs, char** argv ) {
       // loop over MC tracks. Get the truth end points, run thrumu tagger!
       std::cout << ev_mctrack->size() << " = " << xingptdata.mctrack_imgendpoint_indices.size() << std::endl;
       std::vector< larlitecv::BMTrackCluster3D > mc_recotracks; // mc reco track
+      std::vector<int> mc_recotracks_truthindex;
       std::vector< const larlite::opflash* > truth_flash_ptrs; // the flash that goes with each element in mc_recotracks
+      std::cout << "MC track imgendpoint indices: " << xingptdata.mctrack_imgendpoint_indices.size() << std::endl;
       for (int itrack=0; itrack<(int)ev_mctrack->size(); itrack++) {
 	// did this track have end points?
 	int nendpts = xingptdata.mctrack_imgendpoint_indices.at(itrack).size();
@@ -600,6 +602,7 @@ int main( int nargs, char** argv ) {
 	      if ( xingptdata.start_crossing_nplanes_w_charge[start_index]>=2 && xingptdata.end_crossing_nplanes_w_charge[end_index]>=2)
 		ntracks_recod_2planeq++;
 	      mc_recotracks.emplace_back( std::move(trackclusters.at(0)) );
+	      mc_recotracks_truthindex.push_back( itrack );
 
 	      // get its flash
 	      const std::vector<int>& endpoint_indices = xingptdata.mctrack_imgendpoint_indices[itrack];	      
@@ -664,7 +667,7 @@ int main( int nargs, char** argv ) {
 	uy_totqdiff = plane_tracktotq[0]-plane_tracktotq[2];
 	vy_totqdiff = plane_tracktotq[1]-plane_tracktotq[2];
 	trackqtree->Fill();
-      }
+      }//end of loop over MC reco tracks
       // --------------------------------------------------------------------------------
 
       // --------------------------------------------------------------------------------
@@ -703,13 +706,14 @@ int main( int nargs, char** argv ) {
 
       // Declare the number of cm/tick outside the loop.
       const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
+      std::cout << "cm_per_tick:  "<< cm_per_tick << std::endl;
 
       // Loop through these tracks and find the flash hypothesis for each of the qcluster values. \
       // Set the value of 'track_idx'.
       track_idx = 0;
 
       for ( size_t qcluster_iter = 0; qcluster_iter < qcluster_v.size(); qcluster_iter++ ) {
-
+	
 	// Set an object equal to 'truth_flash_ptr' at position 'qcluster_iter'.
 	const larlite::opflash* data_opflash_pointer = truth_flash_ptrs.at(qcluster_iter);
 
@@ -730,19 +734,33 @@ int main( int nargs, char** argv ) {
 	int flash_tick         = (3200.0+data_opflash.Time()/0.5);
 
 	// Convert the tick to a time.
-	double flash_position  = flash_tick*cm_per_tick;
+	double flash_position  = (flash_tick-3200.0)*cm_per_tick;
 
 	// Loop through this value of the qcluster and correct each of the points.
+	std::cout << "Adjusting x-position of track #" << qcluster_iter << " flash_x=" << flash_position << " flash_tick=" << flash_tick << std::endl;
 	for ( size_t qcluster_point_iter = 0; qcluster_point_iter < qcluster_v.at(qcluster_iter).size(); qcluster_point_iter++ ) {
 
 	  // Find the x-coordinate of the first point.
+	  std::cout << "  x: " << qcluster_v.at(qcluster_iter).at(qcluster_point_iter).x;
 	  qcluster_v.at(qcluster_iter).at(qcluster_point_iter).x -= flash_position;
+	  std::cout << " --> (" << qcluster_v.at(qcluster_iter).at(qcluster_point_iter).x << ","
+		    << qcluster_v.at(qcluster_iter).at(qcluster_point_iter).y << ","
+		    << qcluster_v.at(qcluster_iter).at(qcluster_point_iter).z << ")"
+		    << std::endl;
 	  //std::cout << "Correcting the x-position of the qcluster coordinate." << std::endl;
 
 	}
 
 	 //********* End Code for shifting the x-coordinate of the qcluster first.****************
 
+	std::cout << "Compare aginst truth" << std::endl;
+	auto const& amctrack = ev_mctrack->at( mc_recotracks_truthindex[qcluster_iter] );
+	for (auto const& step : amctrack ) {
+	  std::cout << "  (" << step.X() << "," << step.Y() << "," << step.Z() << ")" << std::endl;
+	}
+	
+	std::cout << "[enter] to continue" << std::endl;
+	std::cin.get();
 	
 	track_idx++;
 	
@@ -783,6 +801,11 @@ int main( int nargs, char** argv ) {
 	  }
 
 	}
+
+	// // Declare a canvas and write the two functions to it in order to overlay them.
+	// c->cd();
+	// plot_of_pe_values_for_flash_hypothesis->Draw();
+	// plot_of_pe_values_for_data_flash->Draw("same");
 
 	
 	// Find which other flash has the minimum chi2 value with the true flash.
@@ -924,12 +947,9 @@ int main( int nargs, char** argv ) {
     // Increment 'event_idx'.
     event_idx++;
 
+    break;
   }//end of entry loop
 
-  // Declare a canvas and write the two functions to it in order to overlay them.
-  c->cd();
-  plot_of_pe_values_for_flash_hypothesis->Draw();
-  plot_of_pe_values_for_data_flash->Draw("same");
 
   rfile->Write();
   //

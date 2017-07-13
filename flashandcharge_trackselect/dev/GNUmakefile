@@ -9,6 +9,7 @@ INCFLAGS += $(shell larcv-config --includes)
 INCFLAGS += -I$(LARLITE_BASEDIR)/../
 INCFLAGS += -I$(LARLITE_BASEDIR)/UserDev
 INCFLAGS += -I$(LARLITE_BASEDIR)/UserDev/BasicTool
+INCFLAGS += -I$(LARLITE_BASEDIR)/UserDev/SelectionTool
 INCFLAGS += -I$(LARLITECV_BASEDIR)/app
 INCFLAGS += $(shell larlitecv-config --includes)
 INCFLAGS += -I$(LARCV_BASEDIR)/app/ann_1.1.2/include
