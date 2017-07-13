@@ -5,6 +5,8 @@
 // ROOT
 #include "TFile.h"
 #include "TTree.h"
+#include "TCanvas.h"
+#include "TH1.h"
 
 // larcv
 #include "DataFormat/EventImage2D.h"
@@ -25,7 +27,7 @@
 #include "DataFormat/trigger.h"
 // #include "DataFormat/track.h"
 // #include "LArUtil/LArProperties.h"
-// #include "LArUtil/Geometry.h"
+#include "LArUtil/Geometry.h"
 
 // larlitecv
 #include "Base/DataCoordinator.h"
@@ -52,6 +54,11 @@
 // larlitecv
 #include "Base/DataCoordinator.h"
 #include "ChargeSegmentAlgos/PathPixelChargeMethods.h"
+#include "GeneralFlashMatchAlgo/GeneralFlashMatchAlgoConfig.h"
+#include "GeneralFlashMatchAlgo/GeneralFlashMatchAlgo.h"
+#include "ThruMu/FlashMuonTaggerAlgoConfig.h"
+#include "ThruMu/FlashMuonTaggerAlgo.h"
+
 
 int main( int nargs, char** argv ) {
   
@@ -110,6 +117,8 @@ int main( int nargs, char** argv ) {
   std::vector<float> thresholds_v( 3, fthreshold );
   std::vector<float> label_thresholds_v( 3, -10 );  
   std::vector<int> label_neighborhood(3,0);
+
+  const larutil::Geometry* geo = ::larutil::Geometry::GetME();
   
   // bool use_reclustered   = pset.get<bool>("UseReclustered");
   // int tag_neighborhood   = pset.get<int>("TagNeighborhood",10);
@@ -235,6 +244,32 @@ int main( int nargs, char** argv ) {
   trackqtree->Branch("vy_totqdiff", &vy_totqdiff, "vy_totqdiff/F");
  
   xingptdata.bindToTree( tree );
+
+  // Declare variables that will be needed in the future.
+  float chi2;
+  float min_dchi2;
+
+  TTree* flashmatchtree = new TTree("FlashMatch", "Flash Match Tree" );
+  flashmatchtree->Branch("chi2", &chi2, "chi2/F");
+  flashmatchtree->Branch("min_dchi2", &min_dchi2, "min_dchi2/F");
+
+  int event_idx;
+  int track_idx;
+  int num_of_tracks_with_better_chi2;
+
+  // Declare a tree for the cases in which a fake chi2 is better than the true chi2
+  TTree* betterfakechi2tree = new TTree( "FakeChi2", "Better Fake Chi2 Tree" );
+  betterfakechi2tree->Branch("event_idx", &event_idx, "event_idx/I");
+  betterfakechi2tree->Branch("track_idx", &track_idx, "track_idx/I");
+  betterfakechi2tree->Branch("chi2", &chi2, "chi2/F");
+  betterfakechi2tree->Branch("num_of_tracks_with_better_chi2", &num_of_tracks_with_better_chi2, "num_of_tracks_with_better_chi2/I");
+
+  // Declare the information that you need to make two histograms
+  TH1D* plot_of_pe_values_for_flash_hypothesis = new TH1D("flashhypopedist", "Flash Hypo PE Distr.", 32, 0, 32);
+  TH1D* plot_of_pe_values_for_data_flash       = new TH1D("dataflashpedist", "Truth Flash PE Distr.", 32, 0, 32);
+
+  // Declare the canvas up here.
+  TCanvas *c = new TCanvas("c","c",600.600);
   
   // // Space Charge Corrections
   // larlitecv::SpaceChargeMicroBooNE sce;
@@ -248,6 +283,28 @@ int main( int nargs, char** argv ) {
   larcv::PSet tracker_pset = pset.get<larcv::PSet>("ThruMuTracker");
   larlitecv::ThruMuTrackerConfig tracker_cfg = larlitecv::ThruMuTrackerConfig::MakeFromPSet( tracker_pset );
   larlitecv::ThruMuTracker thrumualgo( tracker_cfg );
+
+  // Flash Matching Algo                                                        
+  larcv::PSet flash_match_pset = pset.get<larcv::PSet>("GeneralFlashMatchAlgo");
+  // Flash Match Algo Config object.                                            
+  larlitecv::GeneralFlashMatchAlgoConfig flash_match_algo_config_object;
+  // Make the PSet from this object.                                            
+  larlitecv::GeneralFlashMatchAlgoConfig flash_match_algo_config_pset = flash_match_algo_config_object.MakeConfigFromPSet(flash_match_pset);
+  // GeneralFlashMatchAlgo object.  This will be used below to find a flash hypothesis for tracks.       
+  larlitecv::GeneralFlashMatchAlgo flash_match_obj( flash_match_algo_config_pset );
+
+  // FlashMuonTaggerAlgo functions.
+  larlitecv::FlashMuonTaggerAlgo anode_flash_tagger(   larlitecv::FlashMuonTaggerAlgo::kAnode );
+  larlitecv::FlashMuonTaggerAlgo cathode_flash_tagger( larlitecv::FlashMuonTaggerAlgo::kCathode );
+
+  // Make an object of type 'FlashMuonTaggerAlgoConfig' and configure it with the default values.
+  larlitecv::FlashMuonTaggerAlgoConfig flash_tagger_config;
+  flash_tagger_config.setdefaults();
+
+  // Configure the two objects of type 'FlashMuonTaggerAlgo' above.
+  anode_flash_tagger.configure( flash_tagger_config );
+  cathode_flash_tagger.configure( flash_tagger_config );
+
 
   // -----------------------------------------------------------------------------------------
 
@@ -272,8 +329,13 @@ int main( int nargs, char** argv ) {
   std::cout << "End Entry: " << endentry-1 << std::endl;
   std::cout << "Buckle up!" << std::endl;
   
-
+  // Set 'event_idx'.
+  event_idx = 0;
+  
   for (int ientry=startentry; ientry<endentry; ientry++) {
+
+    // Break after the first event.
+    if (ientry > 10) break;
 
     // load the entry
     dataco[kCROIfile].goto_entry(ientry,"larcv");
@@ -606,14 +668,170 @@ int main( int nargs, char** argv ) {
 
       // --------------------------------------------------------------------------------
       // Get Chi-2 of flash hypo from reco track and truth flash
-      int ibmtrack=-1;
-      for ( auto const& bmtrack : mc_recotracks ) {
-	ibmtrack++;
-	const larlite::opflash* popflash = truth_flash_ptrs[ibmtrack];
-	const std::vector<std::vector<double> >& path3d = bmtrack.path3d;
+
+      // Declare the vectors needed for these functions.
+      std::vector < larlitecv::BoundarySpacePoint > anode_piercing_space_points;
+      std::vector < larlitecv::BoundarySpacePoint > cathode_piercing_space_points;
+
+      std::vector < int >                anode_piercing_flash_idx;
+      std::vector < int >                cathode_piercing_flash_idx;
+
+      anode_piercing_space_points.clear();
+      cathode_piercing_space_points.clear();
+      anode_piercing_flash_idx.clear();
+      cathode_piercing_flash_idx.clear();
+
+      // Find out what the denomination of these tracks is.
+      anode_flash_tagger.flashMatchTrackEnds(event_opflash_v, imgs_v, badch_v, anode_piercing_space_points, anode_piercing_flash_idx);
+      cathode_flash_tagger.flashMatchTrackEnds(event_opflash_v, imgs_v, badch_v, cathode_piercing_space_points, cathode_piercing_flash_idx);
+
+      // Compute the flash hypothesis for a larlite track.
+      // Convert each of the tracks into larlite tracks
+      std::vector < larlite::track > larlite_track_vec = flash_match_obj.generate_tracks_between_passes(mc_recotracks);
+      std::cout << "Length of the vector of larlite tracks = " << larlite_track_vec.size() << "." << std::endl;
+
+      std::vector < flashana::QCluster_t > qcluster_v;
+      qcluster_v.clear();
+      qcluster_v = flash_match_obj.GenerateQCluster_vector(larlite_track_vec);
+
+      // Now, compare the length of this list to the length of the 'truth_flash_ptrs'.                                                                                                   
+      // Now, compare the length of this list to the length of the 'truth_flash_ptrs'.
+
+      // Print out the event iterator.                                                                                                                                                                
+      std::cout << "The event iterator is currently at " << ientry << "." << std::endl;
+      std::cout << "The size of the qcluster vector = " << qcluster_v.size() << "." << std::endl;
+      std::cout << "The size of the truth_flash_ptrs vector = " << truth_flash_ptrs.size() <<   "." << std::endl;
+
+      // Loop through these tracks and find the flash hypothesis for each of the qcluster values. \
+      // Set the value of 'track_idx'.
+      track_idx = 0;
+
+      for ( size_t qcluster_iter = 0; qcluster_iter < qcluster_v.size(); qcluster_iter++ ) {
+
+	track_idx++;
+
+	// Continue if the flash pointer at this value is NULL.
+	if (truth_flash_ptrs.at(qcluster_iter) == NULL) {
+	  std::cout << "This vector is NULL!" << std::endl;
+	  continue;
+	}
+	
+	// Set an object equal to 'truth_flash_ptr' at position 'qcluster_iter'.
+	const larlite::opflash* data_opflash_pointer = truth_flash_ptrs.at(qcluster_iter);
+	const larlite::opflash  data_opflash         = *data_opflash_pointer;
+
+	float total_pe = 0.0;
+
+	for ( size_t iter = 0; iter < (geo->NOpDets()); iter++ ) {
+	  total_pe += data_opflash.PE(iter);
+	}
+	
+	// Continue if 'total_pe' is less than 10.
+	if (total_pe < 10.0) {
+	  std::cout << "The flash has less than 10.0 PEs total in all of the phototubes!!" << std::endl;
+	  continue;
+	}
+
+	// Calculate the chi2 value
+	chi2 = flash_match_obj.generate_chi2_in_track_flash_comparison( qcluster_v.at(qcluster_iter), data_opflash ); // *truth_flash_ptrs.at(qcluster_iter) );
+	std::cout << "The chi2 match for this track = " << chi2 << "." << std::endl;
+	std::cout << "qcluster iter = " << qcluster_iter << "." << std::endl;
+
+	// Only do this on a track-by-track-basis. Start with the first track of the first event.
+	if (event_idx == 0 && qcluster_iter == 5) {
+	  std::cout << "The previous set of PE information is being used to fill the histogram!!" << std::endl;
+	  // For both the data and the truth, plot the number of PEs in each phototube in the detector.
+	  // Convert both of them to data flashes first.
+          flashana::Flash_t flash_hypothesis_flasht = flash_match_obj.GenerateUnfittedFlashHypothesis(qcluster_v.at(qcluster_iter));
+	  flashana::Flash_t truth_flash_flasht      = flash_match_obj.MakeDataFlash(data_opflash);
+
+	  // Fill each bin with the number of photelectrons in that optical detector.
+	  for (size_t op_iter = 0; op_iter < (geo->NOpDets()); op_iter++) {
+	    // Multiplying by the 'fudge' factor in the first entry.
+	    plot_of_pe_values_for_flash_hypothesis->SetBinContent( op_iter, flash_hypothesis_flasht.pe_v[op_iter]*33333.0);
+	    plot_of_pe_values_for_data_flash->SetBinContent( op_iter, truth_flash_flasht.pe_v[op_iter] );
+
+	    // Print out the pe values in each of the channels.
+	    std::cout << "The number of PEs in the flash hypothesis in optical detector #" << op_iter << " = " << flash_hypothesis_flasht.pe_v[op_iter]*33333.0 << "." << std::endl;
+	    //std::cout << "The number of PEs in the data flash in optical detector #" << op_iter << " = " << truth_flash_flasht.pe_v[op_iter] << "." << std::endl;
+	  }
+
+	}
+
+	
+	// Find which other flash has the minimum chi2 value with the true flash.
+	float dchi2                    = 0.0;
+	min_dchi2                      = -1.0;
+	num_of_tracks_with_better_chi2 = 0;
+	float dchi2_fake_chi2_better_value = 0.0;
+
+	// Start a loop over all of the flashes in the event to find which of the fake flashes has closest chi2 to the true flash.
+	for ( size_t fake_iter = 0; fake_iter < qcluster_v.size(); fake_iter++ ) {
+
+	  // Continue if 'fake_iter' and 'qcluster_iter' have the same value.
+	  if ( fake_iter == qcluster_iter ) continue;
+
+
+	  // Declare 'data_opflash_pointer_fake up here'.
+	  const larlite::opflash* data_opflash_pointer_fake = NULL;
+
+          data_opflash_pointer_fake = truth_flash_ptrs.at( fake_iter );
+
+	  // Continue if the flash pointer at this value is NULL.                                                                                                                              
+	  if (data_opflash_pointer_fake == NULL) {
+	    //std::cout << "This vector is NULL!" << std::endl;
+	    continue;
+	  }
+	  
+	  // Once that value is not fake, load it into an opflash object and calculate the fake chi2 value.
+	  const larlite::opflash   data_opflash_fake          = *data_opflash_pointer_fake;
+	  const float              fake_chi2                  = flash_match_obj.generate_chi2_in_track_flash_comparison( qcluster_v.at(qcluster_iter), data_opflash_fake );
+
+	  // These truth/hypothesis flash tracks somehow
+	  if (std::abs(chi2 - fake_chi2) < 0.0001) {
+	    std::cout << "fake iter = " << fake_iter << std::endl;
+	    continue;
+	  }
+
+	  // Calculate the difference between this chi2 value and the fake value.
+	  dchi2_fake_chi2_better_value = chi2 - fake_chi2;
+	  dchi2                        = std::abs(chi2 - fake_chi2);
+
+	  // Reset the value of min_dchi2 if it is greater than dchi2
+	  if (dchi2 < min_dchi2 || min_dchi2 < 0.0)
+	    min_dchi2 = dchi2;
+	  
+	  // If 'dchi2_fake_chi2_better_value' is negative, then fill the 'betterfakechi2' tree.
+	  if (dchi2_fake_chi2_better_value > 0.0) {
+	    std::cout << "The better chi2 value for the flash from the false flash = " << fake_chi2 << "." << std::endl;
+	    num_of_tracks_with_better_chi2++;
+	    //betterfakechi2tree->Fill();
+	  }
+
+	}
+
+	// Print out the value of 'min_dchi2'.
+	std::cout << "The value of min_dchi2 for this track = " << min_dchi2 << "." << std::endl;
+	std::cout << "\n" << std::endl;
+	
+	// Fill 'flashmatchtree'.
+	if (num_of_tracks_with_better_chi2 == 0)
+	  flashmatchtree->Fill();
+	// Fill 'betterfakechi2tree'.
+	else if (num_of_tracks_with_better_chi2 > 0)
+	  betterfakechi2tree->Fill();
+	
+	// Increment 'track_idx'.
+	//track_idx++;
+      }
+    
+      //int ibmtrack=-1;
+      //for ( auto const& bmtrack : mc_recotracks ) {
+      //	ibmtrack++;
+      //	const larlite::opflash* popflash = truth_flash_ptrs[ibmtrack];
+      //	const std::vector<std::vector<double> >& path3d = bmtrack.path3d;
 
 	// CHRIS' CODE GOES HERE
-      }
       // --------------------------------------------------------------------------------
       
       // --------------------------------------------------------------------------------
@@ -678,7 +896,15 @@ int main( int nargs, char** argv ) {
     
     tree->Fill();
 
+    // Increment 'event_idx'.
+    event_idx++;
+
   }//end of entry loop
+
+  // Declare a canvas and write the two functions to it in order to overlay them.
+  c->cd();
+  plot_of_pe_values_for_flash_hypothesis->Draw();
+  plot_of_pe_values_for_data_flash->Draw("same");
 
   rfile->Write();
   //
