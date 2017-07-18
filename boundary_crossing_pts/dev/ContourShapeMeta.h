@@ -22,10 +22,19 @@ namespace larlitecv {
    ContourShapeMeta( const std::vector<cv::Point>& contour, const larcv::ImageMeta& img );
    virtual ~ContourShapeMeta() {};
 
-   const larcv::ImageMeta& meta() { return m_meta; };    
-   const cv::Point getFitSegmentStart() { return m_start; };
-   const cv::Point getFitSegmentEnd() { return m_end; };   
+   const larcv::ImageMeta& meta() const { return m_meta; };    
+   const cv::Point& getFitSegmentStart() const { return m_start; };
+   const cv::Point& getFitSegmentEnd() const { return m_end; };   
+   const cv::Rect&  getBBox() const  { return m_bbox; };
 
+   std::vector<float> getEndDir() const { return m_dir; };
+   std::vector<float> getStartDir() const {
+     std::vector<float> reverse_dir(m_dir.size(),0);
+     for (size_t i=0; i<m_dir.size(); i++) reverse_dir[i] = -1.0*m_dir[i];
+     return reverse_dir;
+   };
+   
+   
  protected:
    
    // ImageMeta
@@ -40,6 +49,8 @@ namespace larlitecv {
    void _fill_linefit_members();
 
    // Bounding Box (for collision detection)
+   cv::Rect m_bbox;
+   void _build_bbox();
    
  };
  

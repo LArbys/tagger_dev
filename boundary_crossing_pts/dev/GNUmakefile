@@ -46,4 +46,4 @@ bmt_unittest: bmt_unittest.cxx $(LIB)
 	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS) $(LIB)
 
 clean:
-	@rm $(BINARIES) *.o $(LIB)
+	@rm -f $(BINARIES) *.o $(LIB)

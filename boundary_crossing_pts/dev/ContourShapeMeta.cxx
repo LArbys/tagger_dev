@@ -8,6 +8,7 @@ namespace larlitecv {
       m_start( cv::Point(0,0) ),
       m_end( cv::Point(0,0) )  {
     _fill_linefit_members();
+    _build_bbox();
   }
 
   void ContourShapeMeta::_fill_linefit_members() {
@@ -53,7 +54,20 @@ namespace larlitecv {
     }
     m_start = minpt;
     m_end   = maxpt;
+
+    // orient: start is at low y
+    if ( m_start.y > m_end.y ) {
+      cv::Point temp = m_start;
+      m_start = m_end;
+      m_end = temp;
+      for (int i=0; i<2; i++)
+	m_dir[i] *= -1.;
+    }
+    
   }
-
-
+  
+  void ContourShapeMeta::_build_bbox() {
+    m_bbox = cv::boundingRect( *this );
+  }
+  
 }
