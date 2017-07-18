@@ -7,6 +7,7 @@ if len(sys.argv)>=2:
 
 rfile = rt.TFile(anafile, "OPEN")
 tree = rfile.Get("mcxingptana_prefilter")
+#tree = rfile.Get("mcxingptana")
 
 # POS
 cpos = rt.TCanvas("cpos","Truth End point position", 1400, 900)

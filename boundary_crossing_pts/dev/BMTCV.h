@@ -18,7 +18,7 @@
 #include <opencv2/core/core.hpp>
 #endif
 
-
+#include "ContourShapeMeta.h"
 
 namespace larlitecv {
 
@@ -34,6 +34,9 @@ namespace larlitecv {
 
 
     std::vector<larlitecv::BoundarySpacePoint> findBoundarySpacePoints( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v );
+    void analyzeImages( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v );
+
+    void splitContour( const std::vector<larcv::Image2D>& img_v );    
     //#ifdef USE_OPENCV
     //std::vector<cv::Mat>& getImages();
     //#endif    
@@ -42,7 +45,14 @@ namespace larlitecv {
     std::vector<cv::Mat> cvimg_stage0_v; // unchanged images
     std::vector<cv::Mat> cvimg_stage1_v; // contour points over time scan
     std::vector<cv::Mat> cvimg_stage2_v; // 3D-matched contour points
-    std::vector<cv::Mat> cvimg_stage3_v; // 3D-matched spacepointso    
+    std::vector<cv::Mat> cvimg_stage3_v; // 3D-matched spacepointso
+
+    std::vector< ContourList_t >                 m_plane_contours_v;
+    std::vector< std::vector<ContourIndices_t> > m_plane_hulls_v;
+    std::vector< std::vector<Defects_t> >        m_plane_defects_v;
+    std::vector< ContourList_t >                 m_plane_atomics_v;
+    std::vector< std::vector< larlitecv::ContourShapeMeta > > m_plane_atomicmeta_v;
+    
 #endif
   };
 

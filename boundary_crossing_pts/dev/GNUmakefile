@@ -6,6 +6,8 @@ HEADERS = $(filter-out $(FMWKHEADERS), $(wildcard *.h))
 INCFLAGS = -g -I. -fPIC
 INCFLAGS += $(shell larlite-config --includes)
 INCFLAGS += $(shell larcv-config --includes)
+INCFLAGS += -I$(GEO2D_BASEDIR)
+INCFLAGS += -I$(LAROPENCV_BASEDIR)
 INCFLAGS += -I$(LARLITE_BASEDIR)/../
 INCFLAGS += -I$(LARLITE_BASEDIR)/UserDev
 INCFLAGS += -I$(LARLITE_BASEDIR)/UserDev/BasicTool
@@ -17,13 +19,14 @@ INCFLAGS += -DUSE_OPENCV=1
 
 LDFLAGS += $(shell larcv-config --libs)
 LDFLAGS += $(shell larlite-config --libs) -lBasicTool_GeoAlgo
+LDFLAGS += -lLArOpenCV_ImageClusterAlgoClass
 LDFLAGS += $(shell larlitecv-config --libs)
 LDFLAGS += `root-config --ldflags --libs`
 
 LIB=libCrossingPtsAna.so
 BINARIES = analyze_crossingpts bmt_unittest
 BINSRCS = $(addsuffix .cxx,$(BINARIES))
-SOURCES = BMTCV.cxx
+SOURCES = BMTCV.cxx ContourShapeMeta.cxx
 OBJS = $(SOURCES:.cxx=.o)
 
 all: $(LIB) $(BINARIES)
@@ -37,7 +40,7 @@ libCrossingPtsAna.so: $(OBJS)
 	$(CXX) -shared -o $@ $^ $(LDFLAGS)
 
 analyze_crossingpts: analyze_crossingpts.cxx $(LIB)
-	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS) $(LIB)
+	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LIB) $(LDFLAGS)
 
 bmt_unittest: bmt_unittest.cxx $(LIB)
 	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS) $(LIB)

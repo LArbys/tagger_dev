@@ -580,7 +580,8 @@ int main( int nargs, char** argv ) {
     // RECO DEV:
     // BMTCV
 
-    std::vector< larlitecv::BoundarySpacePoint > bmtcv_sp_v = bmtcv_algo.findBoundarySpacePoints( imgs_v, badch_v );
+    //std::vector< larlitecv::BoundarySpacePoint > bmtcv_sp_v = bmtcv_algo.analyzeImages( imgs_v, badch_v );
+    bmtcv_algo.analyzeImages( imgs_v, badch_v );    
     // dump the images
     // print
     for (int p=0; p<3; p++) {
@@ -924,6 +925,8 @@ int main( int nargs, char** argv ) {
 
     // remove
     std::vector<int> endpoint_passes( pushed_ptr_endpoints.size(), 1 );
+    //endptfilter.removeBoundaryAndFlashDuplicates( pushed_ptr_endpoints, imgs_v, gapch_v, endpoint_passes );
+    //endptfilter.removeSameBoundaryDuplicates( pushed_ptr_endpoints, imgs_v, gapch_v, endpoint_passes );
     endptfilter.removeBoundaryAndFlashDuplicates( pushed_ptr_endpoints, imgs_v, badch_v, endpoint_passes );
     endptfilter.removeSameBoundaryDuplicates( pushed_ptr_endpoints, imgs_v, badch_v, endpoint_passes );
 
@@ -963,6 +966,16 @@ int main( int nargs, char** argv ) {
     filtered_spacepoints_v.push_back( &anode_filtered_v );
     filtered_spacepoints_v.push_back( &cathode_filtered_v );
     filtered_spacepoints_v.push_back( &imgends_filtered_v );
+
+    std::cout << "Filtered Spacepoints" << std::endl;
+    for ( auto const& sp_v : filtered_spacepoints_v ) {
+      for ( auto const& sp : *sp_v ) {
+	std::cout << "  ";
+	for (int i=0; i<3; i++)
+	  std::cout << "(" << sp[i].row << "," << sp[i].col << ") ";
+	std::cout << std::endl;
+      }
+    }
 
     std::cout << "== End of Boundary Tagger ===============================" << std::endl;
 

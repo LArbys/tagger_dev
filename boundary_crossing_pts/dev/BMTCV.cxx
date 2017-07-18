@@ -4,6 +4,13 @@
 #include "CVUtil/CVUtil.h"
 #endif
 
+// LArLite
+#include "BasicTool/FhiclLite/PSet.h"
+
+// LArOpenCV
+#include "LArOpenCV/ImageCluster/AlgoClass/DefectBreaker.h"
+#include "LArOpenCV/ImageCluster/AlgoData/TrackClusterCompound.h"
+
 #include "TRandom3.h"
 
 namespace larlitecv {
@@ -11,6 +18,10 @@ namespace larlitecv {
   std::vector<larlitecv::BoundarySpacePoint> BMTCV::findBoundarySpacePoints( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v ) {
     
     std::vector<larlitecv::BoundarySpacePoint> sp_v;
+    return sp_v;
+  }
+
+  void BMTCV::analyzeImages( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v ) { 
     TRandom3 rand(1983);
     
     // ------------------------------------------------------------------------
@@ -34,37 +45,14 @@ namespace larlitecv {
       cvimg_stage1_v.emplace_back( std::move(thresh) );
     }
 
-    /*
-    // chop into time slices, find contours, find ends
-    int sliceheight = 24;
-    int nslices = 1008/sliceheight;
-    //for (int islice=0; islice<nslices; islice++) {
-    for (int islice=8; islice<9; islice++) {
-      std::cout << "analyze slice " << islice << " for contours" << std::endl;
-      for (int p=0; p<3; p++) {
-	cv::Mat cvslice = cvimg_stage1_v[p]( cv::Rect(0,islice*sliceheight,3456,sliceheight) );
-	// for each slice, we find contours
-	std::vector< std::vector<cv::Point> > contour_v;
-	cv::findContours( cvslice, contour_v, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE, cv::Point(0,islice*sliceheight) );
-	// mark stage1
-	for ( int idx=0; idx<(int)contour_v.size(); idx++ ) {
-	  //for ( auto const& pt: contourpt_v ) {
-	  //cv::circle( cvimg_stage0_v[p], pt, 2, cv::Scalar(0,0,255,255), 1 );
-	  //}
-	  cv::drawContours( cvimg_stage0_v[p], contour_v, idx, cv::Scalar(0,0,255,255), 1 );
-	}
-      }
-    }
-    */
-
-
-    std::vector< ContourList_t > plane_contours_v;
-    std::vector< std::vector<ContourIndices_t> > plane_hulls_v;
-    std::vector< std::vector<Defects_t> > plane_defects_v;
+    m_plane_contours_v.clear();
+    m_plane_hulls_v.clear();
+    m_plane_defects_v.clear();
+    
     for (int p=0; p<3; p++) {
       // dilate image first
       cv::Mat& cvimg = cvimg_stage1_v[p];
-      cv::dilate( cvimg, cvimg, cv::Mat(), cv::Point(-1,-1), 2, 1, 1 );
+      cv::dilate( cvimg, cvimg, cv::Mat(), cv::Point(-1,-1), 1, 1, 1 );
       
       // find contours
       ContourList_t contour_v;
@@ -82,7 +70,7 @@ namespace larlitecv {
 	  continue;
 	
 	// draw contours
-	cv::drawContours( cvimg_stage0_v[p], contour_v, idx, cv::Scalar( rand.Uniform(10,255),rand.Uniform(10,255),rand.Uniform(10,255),255), 1 );	
+	//cv::drawContours( cvimg_stage0_v[p], contour_v, idx, cv::Scalar( rand.Uniform(10,255),rand.Uniform(10,255),rand.Uniform(10,255),255), 1 );	
 	
 	// convex hull
 	cv::convexHull( cv::Mat( contour ), hull_v[idx], false );
@@ -106,18 +94,71 @@ namespace larlitecv {
 	}
 
       }
-      plane_contours_v.emplace_back( std::move(contour_v) );
-      plane_hulls_v.emplace_back( std::move(hull_v) );
-      plane_defects_v.emplace_back( std::move(defects_v) );
+      m_plane_contours_v.emplace_back( std::move(contour_v) );
+      m_plane_hulls_v.emplace_back( std::move(hull_v) );
+      m_plane_defects_v.emplace_back( std::move(defects_v) );
     }
 
-    // convex hulls
-    
-    return sp_v;
+    splitContour( img_v );
 #endif
     
   }// end of findBoundarySpacePoints
 
-  //void breakContour( 
   
+  void BMTCV::splitContour( const std::vector<larcv::Image2D>& img_v ) {
+    // given a contour with at least one defect point, we split it with the aim of producing the straightest daughter contours
+    // setup the contour breaker
+    
+    fcllite::PSet emptyset("Empty");
+    larocv::DefectBreaker defectb;
+    defectb.Configure( emptyset );
+
+    TRandom3 rand(time(NULL));    
+
+    m_plane_atomics_v.clear();
+    m_plane_atomics_v.resize(3);
+    m_plane_atomicmeta_v.resize(3);
+    
+    for (int p=0; p<3; p++) {
+      // atomic_contours;
+      auto& contour_v = m_plane_contours_v[p];
+      for ( auto& contour : contour_v ) {
+	larocv::data::TrackClusterCompound atomics = defectb.BreakContour( contour ); // returns a vector<AtomicContour>
+	for ( auto& ctr : atomics ) {
+	  if ( ctr.size()<3 )
+	    continue;
+	  larlitecv::ContourShapeMeta ctrinfo( ctr, img_v[p].meta() );
+	  m_plane_atomics_v[p].push_back( std::move(ctr) );
+	  m_plane_atomicmeta_v[p].emplace_back( std::move(ctrinfo) );
+	}
+      }
+
+      for (int idx=0; idx<(int)m_plane_atomics_v[p].size(); idx++) {
+	cv::drawContours( cvimg_stage0_v[p], m_plane_atomics_v[p], idx, cv::Scalar( rand.Uniform(10,255),rand.Uniform(10,255),rand.Uniform(10,255),255), 1 );
+	cv::line( cvimg_stage0_v[p], m_plane_atomicmeta_v[p].at(idx).getFitSegmentStart(), m_plane_atomicmeta_v[p].at(idx).getFitSegmentEnd(), cv::Scalar(255,255,255,255), 2 );
+      }
+    }    
+    
+  }
+
+  /*
+  bool BMTCV::isPointInContour( const std::vector<float>& pos3d, const float maxdist, const int minsize ) {
+    // provides a simple test
+    // project into planes
+    // ------------------------------------------------------------------------
+    // NO OPENCV
+#ifndef USE_OPENCV
+    throw std::runtime_error( "In order to use BMTCV, you must compile with OpenCV" );
+    return sp_v;
+#else
+    // ------------------------------------------------------------------------
+    // HAS OPENCV
+
+    //std::vector<int> imgcoords = larcv::UBWireTool::
+    
+    // ------------------------------------------------------------------------    
+#endif    
+    return true;
+  }
+  */
 }
