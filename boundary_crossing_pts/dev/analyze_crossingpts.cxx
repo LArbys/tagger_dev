@@ -25,7 +25,7 @@
 // #include "DataFormat/simch.h"
 #include "DataFormat/trigger.h"
 // #include "DataFormat/track.h"
-// #include "LArUtil/LArProperties.h"
+#include "LArUtil/LArProperties.h"
 // #include "LArUtil/Geometry.h"
 
 // larlitecv
@@ -65,6 +65,7 @@
 
 // dev
 #include "BMTCV.h"
+#include "ContourClusterAlgo.h"
 
 int main( int nargs, char** argv ) {
   
@@ -124,6 +125,7 @@ int main( int nargs, char** argv ) {
   std::vector<float> thresholds_v( 3, fthreshold );
   std::vector<float> label_thresholds_v( 3, -10 );  
   std::vector<int> label_neighborhood(3,0);
+  const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;  
   
  // =====================================================================
 
@@ -213,9 +215,11 @@ int main( int nargs, char** argv ) {
 
   // BMT CV
   larlitecv::BMTCV bmtcv_algo;
+
+  // Contour Algo
+  larlitecv::ContourClusterAlgo cc_algo;
   
-  // Filters
-  
+  // Filters  
   larlitecv::RadialEndpointFilter radialfilter;  // remove end points that cannot form a 3d segment nearby
   larlitecv::PushBoundarySpacePoint endptpusher; // remove endpt
   larlitecv::EndPointFilter endptfilter; // removes duplicates
@@ -581,7 +585,24 @@ int main( int nargs, char** argv ) {
     // BMTCV
 
     //std::vector< larlitecv::BoundarySpacePoint > bmtcv_sp_v = bmtcv_algo.analyzeImages( imgs_v, badch_v );
-    bmtcv_algo.analyzeImages( imgs_v, badch_v );    
+    std::vector<larcv::Image2D> clusterpix_v;
+    bmtcv_algo.analyzeImages( imgs_v, badch_v );
+    int testindex = 13;
+    std::vector<float> testpt(3,0);
+    for (int i=0; i<3; i++)
+      testpt[i] =  xingptdata.start_crossingpts[testindex][i];
+    testpt[0] = (imgs_v.front().meta().pos_y( xingptdata.start_pixels[testindex][0] )-3200.0)*cm_per_tick;
+    cc_algo.buildCluster( imgs_v, badch_v, clusterpix_v, testpt,  bmtcv_algo.m_plane_atomicmeta_v );
+
+#ifdef USE_OPENCV
+    std::vector<int> testptpix = larcv::UBWireTool::getProjectedImagePixel( testpt, imgs_v.front().meta(), 3 );
+    std::cout << "testptpix: (" << testptpix[0] << "," << testptpix[1] << "," << testptpix[2] << "," << testptpix[3] << ")" << std::endl;
+    for (int p=0; p<3; p++) {
+      cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 10, cv::Scalar( 255, 0, 255, 255 ), 1 );
+    }
+#endif
+
+    
     // dump the images
     // print
     for (int p=0; p<3; p++) {

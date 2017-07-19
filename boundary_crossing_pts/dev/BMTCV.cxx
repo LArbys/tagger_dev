@@ -138,8 +138,9 @@ namespace larlitecv {
 	cv::line( cvimg_stage0_v[p], m_plane_atomicmeta_v[p].at(idx).getFitSegmentStart(), m_plane_atomicmeta_v[p].at(idx).getFitSegmentEnd(), cv::Scalar(255,255,255,255), 2 );
       }
     }    
+
     
-  }
+  }//splitContour
 
   /*
   bool BMTCV::isPointInContour( const std::vector<float>& pos3d, const float maxdist, const int minsize ) {

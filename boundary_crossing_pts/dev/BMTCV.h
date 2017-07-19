@@ -52,7 +52,6 @@ namespace larlitecv {
     std::vector< std::vector<Defects_t> >        m_plane_defects_v;
     std::vector< ContourList_t >                 m_plane_atomics_v;
     std::vector< std::vector< larlitecv::ContourShapeMeta > > m_plane_atomicmeta_v;
-    
 #endif
   };
 
