@@ -1,4 +1,4 @@
-#include "ContourClusterAlgo.h"
+#include "ContourBuilderAlgo.h"
 #include <assert.h>
 #include <sstream>
 #include <exception>
@@ -12,11 +12,12 @@
 
 namespace larlitecv {
 
-  ContourClusterAlgo::ContourClusterAlgo() {};
+  // =======================================================================================================
+  ContourBuilderAlgo::ContourBuilderAlgo() {};
 
-  ContourClusterAlgo::~ContourClusterAlgo() {};
+  ContourBuilderAlgo::~ContourBuilderAlgo() {};
 
-  void ContourClusterAlgo::buildCluster( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v, std::vector< larcv::Image2D >& clusterpix_v,
+  void ContourBuilderAlgo::buildCluster( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v, std::vector< larcv::Image2D >& clusterpix_v,
 					 const std::vector<float>& pos3d, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v ) {
     // a blank image to build merged cluster
     if ( clusterpix_v.size()==0 ) {
@@ -167,7 +168,7 @@ namespace larlitecv {
     
   }
 
-  bool ContourClusterAlgo::extendClusterGroup( ContourCluster& cluster, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+  bool ContourBuilderAlgo::extendClusterGroup( ContourCluster& cluster, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
 					       const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v, std::vector< larcv::Image2D >& clusterpix_v ) {
     // for each of the active ends of the cluster, we look for the best match on each plane
     // appending requires that we can build a 3D consistent line segment
@@ -389,7 +390,7 @@ namespace larlitecv {
   }//end of extension method
 
 
-  int ContourClusterAlgo::getIndexOfContainingContour( const int row, const int col, const std::vector<ContourShapeMeta>& contours_v, int min_cluster_size, float dist_tolerance ) {
+  int ContourBuilderAlgo::getIndexOfContainingContour( const int row, const int col, const std::vector<ContourShapeMeta>& contours_v, int min_cluster_size, float dist_tolerance ) {
     // first test bbox (faster test)
     // then do point poly test
     
@@ -414,7 +415,7 @@ namespace larlitecv {
     return -1;
   }
   
-  bool ContourClusterAlgo::ratchetCluster( ContourCluster& cluster, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+  bool ContourBuilderAlgo::ratchetCluster( ContourCluster& cluster, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
 					   const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v, std::vector< larcv::Image2D >& clusterpix_v ) {
     // what we do is we find the tmax and tmin of the clusters across planes
     // we then extend the direction of the current contours to that time until we run into another contour.
@@ -515,7 +516,7 @@ namespace larlitecv {
   }//end of extension method
   
 
-  std::vector<float> ContourClusterAlgo::calculateContourIntersection( const std::vector< cv::Point >& cnt1, const std::vector< cv::Point >& cnt2 ) {
+  std::vector<float> ContourBuilderAlgo::calculateContourIntersection( const std::vector< cv::Point >& cnt1, const std::vector< cv::Point >& cnt2 ) {
     std::vector<float> insec;
     //float Y1 = ls1[1][1] - ls1[0][1];
     //float X1 = ls1[0][0] - ls1[1][0];
@@ -544,7 +545,7 @@ namespace larlitecv {
     return insec;
   }
 
-  bool ContourClusterAlgo::buildContourGraph( ContourCluster& cluster, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+  bool ContourBuilderAlgo::buildContourGraph( ContourCluster& cluster, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
 					      const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v, std::vector< larcv::Image2D >& clusterpix_v ) {
     bool cluster_extended = false;
     for (int p=0; p<3; p++) {

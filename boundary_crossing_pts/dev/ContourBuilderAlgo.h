@@ -1,13 +1,13 @@
-#ifndef __CONTOUR_CLUSTER_ALGO_H__
-#define __CONTOUR_CLUSTER_ALGO_H__
+#ifndef __CONTOUR_CLUSTER_BUILDER_H__
+#define __CONTOUR_CLUSTER_BUILDER_H__
 
 #include <vector>
 
 // larcv
 #include "DataFormat/Image2D.h"
 
-#include "ContourShapeMeta.h"
 #include "ContourCluster.h"
+#include "ContourShapeMeta.h"
 
 #ifdef USE_OPENCV
 #include <opencv2/opencv.hpp>
@@ -18,11 +18,11 @@
 namespace larlitecv {
 
   
-  class ContourClusterAlgo {
+  class ContourBuilderAlgo {
   public:
 
-    ContourClusterAlgo();
-    virtual ~ContourClusterAlgo();
+    ContourBuilderAlgo();
+    virtual ~ContourBuilderAlgo();
 
 
     void buildCluster( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v, std::vector< larcv::Image2D >& clusterpix_v,

@@ -65,6 +65,7 @@
 
 // dev
 #include "BMTCV.h"
+#include "BMTContourFilterAlgo.h"
 #include "ContourClusterAlgo.h"
 
 int main( int nargs, char** argv ) {
@@ -585,22 +586,65 @@ int main( int nargs, char** argv ) {
     // BMTCV
 
     //std::vector< larlitecv::BoundarySpacePoint > bmtcv_sp_v = bmtcv_algo.analyzeImages( imgs_v, badch_v );
+    larlitecv::BMTContourFilterAlgo contour_filter_algo;
     std::vector<larcv::Image2D> clusterpix_v;
-    bmtcv_algo.analyzeImages( imgs_v, badch_v );
-    int testindex = 13;
-    std::vector<float> testpt(3,0);
-    for (int i=0; i<3; i++)
-      testpt[i] =  xingptdata.start_crossingpts[testindex][i];
-    testpt[0] = (imgs_v.front().meta().pos_y( xingptdata.start_pixels[testindex][0] )-3200.0)*cm_per_tick;
-    cc_algo.buildCluster( imgs_v, badch_v, clusterpix_v, testpt,  bmtcv_algo.m_plane_atomicmeta_v );
+    bmtcv_algo.analyzeImages( imgs_v, badch_v, 10.0 );
+    //int testindex = 13; // easy straight line
+    //int testindex = 18;
+    int numstart_in_contour = 0;
+    int numstart = 0;
+    for ( int testindex=0; testindex<(int)xingptdata.start_crossingpts.size(); testindex++) {
+      std::vector<float> testpt(3,0);
+      for (int i=0; i<3; i++)
+	testpt[i] =  xingptdata.start_crossingpts[testindex][i];
+      testpt[0] = (imgs_v.front().meta().pos_y( xingptdata.start_pixels[testindex][0] )-3200.0)*cm_per_tick;
+      bool incontour = contour_filter_algo.buildCluster( imgs_v, badch_v, clusterpix_v, testpt, bmtcv_algo.m_plane_atomicmeta_v );
+      if ( incontour )
+	numstart_in_contour++;
+      numstart++;
 
 #ifdef USE_OPENCV
-    std::vector<int> testptpix = larcv::UBWireTool::getProjectedImagePixel( testpt, imgs_v.front().meta(), 3 );
-    std::cout << "testptpix: (" << testptpix[0] << "," << testptpix[1] << "," << testptpix[2] << "," << testptpix[3] << ")" << std::endl;
-    for (int p=0; p<3; p++) {
-      cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 10, cv::Scalar( 255, 0, 255, 255 ), 1 );
-    }
+      std::vector<int> testptpix = larcv::UBWireTool::getProjectedImagePixel( testpt, imgs_v.front().meta(), 3 );
+      std::cout << "testptpix: (" << testptpix[0] << "," << testptpix[1] << "," << testptpix[2] << "," << testptpix[3] << ")" << std::endl;
+      for (int p=0; p<3; p++) {
+	if ( incontour )
+	  cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 10, cv::Scalar( 255, 0, 255, 255 ), 1 );
+	else
+	  cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 10, cv::Scalar( 255, 255, 0, 255 ), 1 );	  
+      }
 #endif
+      
+    }
+
+    std::cout << "BMT Contour Filter on truth points: " << float(numstart_in_contour)/float(numstart) << std::endl;
+    //cc_algo.buildCluster( imgs_v, badch_v, clusterpix_v, testpt,  bmtcv_algo.m_plane_atomicmeta_v );
+
+    int numend_in_contour = 0;
+    int numend = 0;
+    for ( int testindex=0; testindex<(int)xingptdata.end_crossingpts.size(); testindex++) {
+      std::vector<float> testpt(3,0);
+      for (int i=0; i<3; i++)
+	testpt[i] =  xingptdata.end_crossingpts[testindex][i];
+      testpt[0] = (imgs_v.front().meta().pos_y( xingptdata.end_pixels[testindex][0] )-3200.0)*cm_per_tick;
+      bool incontour = contour_filter_algo.buildCluster( imgs_v, badch_v, clusterpix_v, testpt, bmtcv_algo.m_plane_atomicmeta_v );
+      if ( incontour )
+	numend_in_contour++;
+      numend++;
+
+#ifdef USE_OPENCV
+      std::vector<int> testptpix = larcv::UBWireTool::getProjectedImagePixel( testpt, imgs_v.front().meta(), 3 );
+      std::cout << "testptpix: (" << testptpix[0] << "," << testptpix[1] << "," << testptpix[2] << "," << testptpix[3] << ")" << std::endl;
+      for (int p=0; p<3; p++) {
+	if ( incontour )
+	  cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 10, cv::Scalar( 255, 0, 255, 255 ), 1 );
+	else
+	  cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 10, cv::Scalar( 255, 255, 0, 255 ), 1 );	  
+      }
+#endif
+      
+    }
+
+    std::cout << "BMT Contour Filter on truth points: " << float(numend_in_contour)/float(numend) << std::endl;    
 
     
     // dump the images

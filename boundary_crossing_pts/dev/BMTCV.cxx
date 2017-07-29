@@ -21,7 +21,7 @@ namespace larlitecv {
     return sp_v;
   }
 
-  void BMTCV::analyzeImages( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v ) { 
+  void BMTCV::analyzeImages( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v, const float threshold ) { 
     TRandom3 rand(1983);
     
     // ------------------------------------------------------------------------
@@ -37,8 +37,8 @@ namespace larlitecv {
     cvimg_stage0_v.clear();
     cvimg_stage1_v.clear();    
     for ( auto const& img : img_v ) {
-      cv::Mat cvimg = larcv::as_gray_mat( img, 8.0, 256.0, 1.0 );
-      cv::Mat cvrgb = larcv::as_mat_greyscale2bgr( img, 10.0, 100.0 );
+      cv::Mat cvimg = larcv::as_gray_mat( img, threshold, 256.0, 1.0 );
+      cv::Mat cvrgb = larcv::as_mat_greyscale2bgr( img, threshold, 100.0 );
       cv::Mat thresh( cvimg );
       cv::threshold( cvimg, thresh, 0, 255, cv::THRESH_BINARY );
       cvimg_stage0_v.emplace_back( std::move(cvrgb) );
@@ -135,7 +135,7 @@ namespace larlitecv {
 
       for (int idx=0; idx<(int)m_plane_atomics_v[p].size(); idx++) {
 	cv::drawContours( cvimg_stage0_v[p], m_plane_atomics_v[p], idx, cv::Scalar( rand.Uniform(10,255),rand.Uniform(10,255),rand.Uniform(10,255),255), 1 );
-	cv::line( cvimg_stage0_v[p], m_plane_atomicmeta_v[p].at(idx).getFitSegmentStart(), m_plane_atomicmeta_v[p].at(idx).getFitSegmentEnd(), cv::Scalar(255,255,255,255), 2 );
+	cv::line( cvimg_stage0_v[p], m_plane_atomicmeta_v[p].at(idx).getFitSegmentStart(), m_plane_atomicmeta_v[p].at(idx).getFitSegmentEnd(), cv::Scalar(255,255,255,255), 1 );
       }
     }    
 
