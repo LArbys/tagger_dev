@@ -26,7 +26,8 @@ namespace larlitecv {
 
 
     bool buildCluster( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v, std::vector< larcv::Image2D >& clusterpix_v,
-		       const std::vector<float>& pos3d, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v );
+		       const std::vector<float>& pos3d, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+		       const float max_dist2contour );
 
     /* bool extendClusterGroup( ContourCluster& cluster, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v, */
     /* 			     const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v, std::vector< larcv::Image2D >& clusterpix_v ); */
@@ -43,6 +44,7 @@ namespace larlitecv {
 
     bool isPointInContour( const std::vector<cv::Point>& imgpt, const std::vector<larcv::Image2D>& img_v,
 			   const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+			   const float max_dist2contour,
 			   ContourCluster& outcluster );
     
     

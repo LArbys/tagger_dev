@@ -123,6 +123,7 @@ int main( int nargs, char** argv ) {
   bool printFlashEnds    = pset.get<bool>("PrintFlashEnds");
   bool printImages       = pset.get<bool>("PrintImages");
   float fthreshold       = pset.get<float>("PixelThreshold");
+  float max_dist2contour = pset.get<float>("MaxDist2Contour");
   std::vector<float> thresholds_v( 3, fthreshold );
   std::vector<float> label_thresholds_v( 3, -10 );  
   std::vector<int> label_neighborhood(3,0);
@@ -437,7 +438,7 @@ int main( int nargs, char** argv ) {
       for (int i=0; i<larlitecv::kNumEndTypes; i++) {
 	std::cout << "  " << spacepoint_producers[i] << ": " << xingptdata.true_crossingpoints[i] << std::endl;
       }
-      
+
       // --------------------------------------------------------------------------------
       // OPEN CV VISUALIZATION
 #ifdef USE_OPENCV
@@ -451,26 +452,39 @@ int main( int nargs, char** argv ) {
 	  int col = info.imgcoord[p+1];
 	  if ( col<0 ) col = 0;
 	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
-	  int radius = -1;
-	  if ( info.nplanes_w_charge<=2 )
-	    radius = 1;
 
+	  // label
 	  std::stringstream ptname;	  
-	  if ( info.start_or_end==0 ) {
+	  if ( info.start_or_end==0 )
 	    ptname << "#S" << ipt;
+	  else
+	    ptname << "#E" << ipt;
+
+	  // color
+	  cv::Scalar color( 0, 0, 0, 255 );
+	  if ( info.start_or_end==0 ) {
 	    if ( info.type==4 || info.type==5 )
-	      cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0, 255, 255, 255 ), radius );
+	      color = cv::Scalar( 0, 255, 255, 255 );
 	    else
-	      cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0,   0, 255, 255 ), radius );
+	      color = cv::Scalar( 0,   0, 255, 255 );
 	  }
 	  else {
-	    ptname << "#E" << ipt;
 	    if ( info.type==4 || info.type==5 )
-	      cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 255, 0, 255 ), radius );
+	      color = cv::Scalar( 255, 255, 0, 255 );
 	    else
-	      cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 0, 0, 255 ), radius );
+	      color = cv::Scalar( 255, 0, 0, 255 );
+	  }	      
+
+	  float radius;
+	  
+	  if ( info.nplanes_w_charge>=2 ) {
+	    // findable truth point
+	    cv::circle( cvimgs_v[p], cv::Point(col,row), 6, color, radius );
 	  }
-	  cv::putText( cvimgs_v[p], cv::String(ptname.str()), cv::Point( col+2, row+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,255,255,255) );
+	  else {
+	    cv::rectangle( cvimgs_v[p], cv::Point(col-3,row-3), cv::Point(col+3,row+3), color, 2 );
+	  }
+	  cv::putText( cvimgs_v[p], cv::String(ptname.str()), cv::Point( col+2, row+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.5, color );
 	}
       }
       // --------------------------------------------------------------------------------      
@@ -514,7 +528,7 @@ int main( int nargs, char** argv ) {
     std::vector< larlitecv::BoundarySpacePoint > side_spacepoint_v;
     std::vector< larcv::Image2D> boundarypixel_image_v;
     std::vector< larcv::Image2D> realspacehit_image_v;
-    bmt.searchforboundarypixels3D( binblur_v, badch_v, side_spacepoint_v, boundarypixel_image_v, realspacehit_image_v );
+    bmt.searchforboundarypixels3D( imgs_v, badch_v, side_spacepoint_v, boundarypixel_image_v, realspacehit_image_v );
     int nsides[4] = {0};
     for ( auto const& sp : side_spacepoint_v ) {
       nsides[ sp.at(0).type ]++;
@@ -596,7 +610,7 @@ int main( int nargs, char** argv ) {
       for (int i=1; i<3; i++)
       	testpt[i] =  info.crossingpt_detsce_tyz[i];
       testpt[0] = (info.crossingpt_detsce_tyz[0]-3200.0)*cm_per_tick;
-      bool incontour = contour_truthfilter_algo.buildCluster( imgs_v, badch_v, truthfilter_clusterpix_v, testpt, bmtcv_algo.m_plane_atomicmeta_v );
+      bool incontour = contour_truthfilter_algo.buildCluster( imgs_v, badch_v, truthfilter_clusterpix_v, testpt, bmtcv_algo.m_plane_atomicmeta_v, max_dist2contour );
       if ( incontour )
 	numtruth_in_contour++;
       numtruth++;
@@ -621,6 +635,7 @@ int main( int nargs, char** argv ) {
 
     larlitecv::BMTContourFilterAlgo contour_recofilter_algo;
     std::vector<larcv::Image2D> recofilter_clusterpix_v;
+    std::vector< int > recofilter_passes( xingptdata_prefilter.recocrossingptinfo_v.size(), 0 );
 
     int numreco_good_in_contour = 0;
     int numreco_bad_in_contour = 0;    
@@ -635,30 +650,54 @@ int main( int nargs, char** argv ) {
 	std::vector<float> testpt(3,0);
 	for (int i=0; i<3; i++)
 	  testpt[i] =  sp.pos()[i];
-	bool incontour = contour_recofilter_algo.buildCluster( imgs_v, badch_v, recofilter_clusterpix_v, testpt, bmtcv_algo.m_plane_atomicmeta_v );
+	bool incontour = contour_recofilter_algo.buildCluster( imgs_v, badch_v, recofilter_clusterpix_v, testpt, bmtcv_algo.m_plane_atomicmeta_v, max_dist2contour );
 	if ( recoinfo.truthmatch==1 ) {
 	  numreco_good++;
-	  if ( incontour )
+	  if ( incontour ) {
 	    numreco_good_in_contour++;
+	    recofilter_passes[ireco] = 1;
+	  }
 	}
 	else {
 	  numreco_bad++;
 	  if ( incontour ) {
 	    numreco_bad_in_contour++;
+	    recofilter_passes[ireco] = 1;	    
 	  }
 	}
       
 #ifdef USE_OPENCV
 	std::vector<int> testptpix = larcv::UBWireTool::getProjectedImagePixel( testpt, imgs_v.front().meta(), 3 );
-	std::cout << "testptpix: (" << testptpix[0] << "," << testptpix[1] << "," << testptpix[2] << "," << testptpix[3] << ")" << std::endl;
+	//std::cout << "testptpix: (" << testptpix[0] << "," << testptpix[1] << "," << testptpix[2] << "," << testptpix[3] << ")" << std::endl;
+
+	std::stringstream ptname;
+	if ( sp.type()==0 )
+	  ptname << "#T" << ireco;
+	else if ( sp.type()==1 )
+	  ptname << "#B" << ireco;
+	else if ( sp.type()==2 )
+	  ptname << "#U" << ireco;
+	else if ( sp.type()==3 )
+	  ptname << "#D" << ireco;
+	else if ( sp.type()==4 )
+	  ptname << "#A" << ireco;
+	else if ( sp.type()==5 )
+	  ptname << "#C" << ireco;
+	else
+	  ptname << "#I" << ireco;
+
 	for (int p=0; p<3; p++) {
-	  if ( incontour )
+	  if ( incontour ) {
 	    cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 3, cv::Scalar( 255, 0, 255, 255 ), 1 );
-	  else
-	    cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 3, cv::Scalar( 255, 255, 0, 255 ), 1 );	  
+	    cv::putText( cvimgs_v[p], cv::String(ptname.str()), cv::Point(testptpix[p+1]+2,testptpix[0]), cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255,0,255,255) );
+	  }
+	  else  {
+	    cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 3, cv::Scalar( 255, 255, 0, 255 ), 1 );
+	    cv::putText( cvimgs_v[p], cv::String(ptname.str()), cv::Point(testptpix[p+1]+2,testptpix[0]), cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255,255,0,255) );	    	    
+	  }
 	}
 #endif
-
+	
       }//end of sp loop
     }//end of spacepoint v
     std::cout << "BMT Contour Filter on reco points ----------------- " << std::endl;
@@ -758,12 +797,15 @@ int main( int nargs, char** argv ) {
 	}
       }
     }
-
+    */
+    
     // DRAW THE BOUNDARY POINTS IMAGES
     std::cout << "BoundaryPixel Images: " << boundarypixel_image_v.size() << std::endl;
     std::cout << "RealSpaceHit Images: " << realspacehit_image_v.size()  << std::endl;    
     std::vector<cv::Mat> cvboundarypix_v;
-    std::vector<cv::Mat> cvrealspace_v;        
+    std::vector<cv::Mat> cvrealspace_v;
+ 
+#ifdef USE_OPENCV         
     if ( printImages ) {
       for ( auto const& img : imgs_v ) {
 	cv::Mat cvimg = larcv::as_mat_greyscale2bgr( img, fthreshold, 100.0 );
@@ -802,18 +844,14 @@ int main( int nargs, char** argv ) {
       }
 
       if ( ismc ) {
-	// draw start points
-	for ( int ipt=0; ipt<(int)xingptdata.start_pixels.size(); ipt++) {
-	  int itype = xingptdata.start_type[ipt];
+	// draw truth points
+	for (int ipt=0; ipt<(int)xingptdata.truthcrossingptinfo_v.size(); ipt++) {
+	  larlitecv::TruthCrossingPointAna_t& info = xingptdata_prefilter.truthcrossingptinfo_v[ipt];
+	  int itype = info.type;
 	  if ( itype>=4 )
 	    continue;
-	  std::vector<float> crossingpt = xingptdata.start_crossingpts.at(ipt);
-	  std::vector<double> offsets   = sce.GetPosOffsets( crossingpt[0], crossingpt[1], crossingpt[2] );
-	  std::vector<float> crossingpt_sce(3,0);
-	  crossingpt_sce[0] = crossingpt[0] - offsets[0] + 0.7;
-	  crossingpt_sce[1] = crossingpt[1] + offsets[1];
-	  crossingpt_sce[2] = crossingpt[2] + offsets[2];	  
-	  std::vector<int>   crossingpx = xingptdata.start_pixels.at(ipt);	  
+	  std::vector<float>& crossingpt_sce = info.crossingpt_detsce;
+	  std::vector<int>&   crossingpx     = info.imgcoord;
 
 	  float x = 0;
 	  if ( itype==0 || itype==1 ) {
@@ -825,49 +863,65 @@ int main( int nargs, char** argv ) {
 	    x = crossingpt_sce[1]+117.0;
 	  }
 	  int row=crossingpx[0];
-	  
-	  if ( xingptdata_prefilter.matched_startpoint[ipt]==1 )
-	    cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 0, 0, 255, 255 ), 2.0 );
-	  else
-	    cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 255, 0, 255, 255 ), 2.0 );
 
-	  std::stringstream ptname;
-	  ptname << "#S" << ipt;	  
+	  std::stringstream ptname;	  
+	  if ( info.start_or_end==0 ) {
+	    ptname << "#S" << ipt;	    
+	    if ( info.matched==1 )
+	      cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 0, 0, 255, 255 ), 2.0 );
+	    else
+	      cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 255, 0, 0, 255 ), 2.0 );
+	  }
+	  else {
+	    ptname << "#E" << ipt;	    
+	    if ( info.matched==1 )
+	      cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 0, 0, 255, 255 ), 2.0 );
+	    else
+	      cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 255, 0, 0, 255 ), 2.0 );
+	  }
 	  cv::putText( cvrealspace_v[itype], cv::String(ptname.str()), cv::Point( x+2, row+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,255,255,255) );	  	  	  
 	}
-      
-	// draw end points
-	for ( int ipt=0; ipt<(int)xingptdata.end_pixels.size(); ipt++) {
-	  int itype = xingptdata.end_type[ipt];
-	  if ( itype>=4 )
+      }
+
+      // draw reco points
+      ireco = -1;
+      for ( auto const& p_sp_v : prefilter_spacepoints_v ) {
+	for (auto const& sp : *p_sp_v ) {
+	  ireco++;
+	  if ( sp.type()>=4 )
 	    continue;
-	  std::vector<float> crossingpt = xingptdata.end_crossingpts.at(ipt);
-	  std::vector<double> offsets   = sce.GetPosOffsets( crossingpt[0], crossingpt[1], crossingpt[2] );
-	  std::vector<float> crossingpt_sce(3,0);
-	  crossingpt_sce[0] = crossingpt[0] - offsets[0] + 0.7;
-	  crossingpt_sce[1] = crossingpt[1] + offsets[1];
-	  crossingpt_sce[2] = crossingpt[2] + offsets[2];
-	  std::vector<int>   crossingpx = xingptdata.end_pixels.at(ipt);	  
-	  
+	  std::stringstream ptname;
+	  if ( sp.type()==0 )
+	    ptname << "#T" << ireco;
+	  else if ( sp.type()==1 )
+	    ptname << "#B" << ireco;
+	  else if ( sp.type()==2 )
+	    ptname << "#U" << ireco;
+	  else if ( sp.type()==3 )
+	    ptname << "#D" << ireco;
+	  else if ( sp.type()==4 )
+	    ptname << "#A" << ireco;
+	  else if ( sp.type()==5 )
+	    ptname << "#C" << ireco;
+	  else
+	    continue; // not relavent here
+
 	  float x = 0;
-	  if ( itype==0 || itype==1 ) {
+	  if ( sp.type()==0 || sp.type()==1 ) {
 	    // top and bottom
-	    x = crossingpt_sce[2];
+	    x = sp.pos()[2];
 	  }
 	  else {
 	    // upstream downstream
-	    x = crossingpt_sce[1]+117.0;
+	    x = sp.pos()[1]+117.0;
 	  }
-	  int row=crossingpx[0];
-
-	  if ( xingptdata_prefilter.matched_endpoint[ipt]==1 )
-	    cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 255, 0, 0, 255 ), 2.0 );
-	  else
-	    cv::circle( cvrealspace_v[itype], cv::Point(x,row), 6, cv::Scalar( 125, 125, 255, 255 ), 2.0 );
-	  std::stringstream ptname;
-	  ptname << "#E" << ipt;	  
-	  cv::putText( cvrealspace_v[itype], cv::String(ptname.str()), cv::Point( x+2, row+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,255,255,255) );	  	  
-	}	
+	  int row=sp[0].row;
+	  cv::Scalar colour(125,125,255,255);
+	  if ( recofilter_passes[ireco]==0 )
+	    colour = cv::Scalar(255,125,125,255);
+	  cv::circle(  cvrealspace_v[sp.type()], cv::Point(x,row), 2, colour, -1.0 );
+	  cv::putText( cvrealspace_v[sp.type()], cv::String(ptname.str()), cv::Point( x+2, row+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.3, colour );
+	}
       }
       
       // print
@@ -886,7 +940,7 @@ int main( int nargs, char** argv ) {
     // =======================================================================    
     // RUN END POINT FILTERES
     // ----------------------
-    
+    /*
 
     // first filter: radialfilter
     std::vector< const larlitecv::BoundarySpacePoint* > pass_radial_filter;

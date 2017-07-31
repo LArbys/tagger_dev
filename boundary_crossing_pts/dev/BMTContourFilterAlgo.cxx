@@ -18,7 +18,8 @@ namespace larlitecv {
   BMTContourFilterAlgo::~BMTContourFilterAlgo() {};
 
   bool BMTContourFilterAlgo::buildCluster( const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v, std::vector< larcv::Image2D >& clusterpix_v,
-					   const std::vector<float>& pos3d, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v ) {
+					   const std::vector<float>& pos3d, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+					   const float max_dist2contour ) {
     // we rely on contours produced by BMTCV::analyzeImages + BMTCV::splitcontours
     
     // a blank image to build merged cluster
@@ -69,7 +70,7 @@ namespace larlitecv {
 
     // ok now we need the seed cluster
     ContourCluster foundcluster;
-    bool foundcontour = isPointInContour( imgpt, img_v, plane_contours_v, foundcluster ); 
+    bool foundcontour = isPointInContour( imgpt, img_v, plane_contours_v, max_dist2contour, foundcluster ); 
 
     /*
     std::vector<cv::Mat> cvimg_v;
@@ -135,6 +136,7 @@ namespace larlitecv {
 
   bool BMTContourFilterAlgo::isPointInContour( const std::vector<cv::Point>& imgpt, const std::vector<larcv::Image2D>& img_v,
 					       const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+					       const float max_dist2contour,
 					       ContourCluster& outcluster ) {
 
     // ok now we need the seed cluster
@@ -152,8 +154,8 @@ namespace larlitecv {
 	  continue;
 
 	// more detailed test
-	double dist = cv::pointPolygonTest( plane_contours_v[p][idx], imgpt[p], false );
-	if (dist>=0 ) {
+	double dist = cv::pointPolygonTest( plane_contours_v[p][idx], imgpt[p], true );
+	if (dist>=-max_dist2contour ) {
 	  contains = true;
 	  containing_idx = idx;
 	}
