@@ -14,8 +14,6 @@ namespace larlitecv {
   void ContourShapeMeta::_fill_linefit_members() {
     cv::Vec4f out_array;
 
-    std::cout << "size: " << (*this).size() << std::endl;
-    
     cv::fitLine( *this, out_array, cv::DIST_L2, 0, 0.01, 0.01 );
     m_dir.resize(2,0);
     
