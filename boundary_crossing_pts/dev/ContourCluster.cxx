@@ -14,15 +14,17 @@ namespace larlitecv {
     earlyDir.resize( plane_contours.size() );    
     
     for (size_t p=0; p<plane_contours.size(); p++) {
-      at(p).push_back( *(plane_contours[p]) );
-
-      earlyEnd[p].push_back( plane_contours[p]->getFitSegmentStart() );
-      earlyContours[p].push_back( plane_contours[p] );
-      earlyDir[p].push_back( plane_contours[p]->getStartDir() );
-
-      lateEnd.push_back( plane_contours[p]->getFitSegmentEnd() );
-      lateContours.push_back( plane_contours[p] );
-      lateDir.push_back( plane_contours[p]->getEndDir() );
+      if ( plane_contours[p]!=NULL ) {
+	at(p).push_back( *(plane_contours[p]) );
+	
+	earlyEnd[p].push_back( plane_contours[p]->getFitSegmentStart() );
+	earlyContours[p].push_back( plane_contours[p] );
+	earlyDir[p].push_back( plane_contours[p]->getStartDir() );
+	
+	lateEnd.push_back( plane_contours[p]->getFitSegmentEnd() );
+	lateContours.push_back( plane_contours[p] );
+	lateDir.push_back( plane_contours[p]->getEndDir() );
+      }
     }    
   }
 

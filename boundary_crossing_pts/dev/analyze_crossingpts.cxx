@@ -1,3 +1,4 @@
+
 #include <iostream>
 
 #include <string>
@@ -349,9 +350,21 @@ int main( int nargs, char** argv ) {
 #ifdef USE_OPENCV
     std::vector<cv::Mat> cvimgs_v;    
     if ( printImages ) {
+      int p=0;
       for ( auto const& img : imgs_v ) {
 	cv::Mat cvimg = larcv::as_mat_greyscale2bgr( img, fthreshold, 100.0 );
+	const larcv::Image2D& badch = badch_v[p];
+	for (int i=0; i<(int)badch.meta().cols(); i++) {
+	  if ( badch.pixel(10,i)>0 ) {
+	    for (int r=0; r<badch.meta().rows(); r++) {
+	      cvimg.at<cv::Vec3b>(cv::Point(i,r))[0] = 10;
+	      cvimg.at<cv::Vec3b>(cv::Point(i,r))[1] = 10;
+	      cvimg.at<cv::Vec3b>(cv::Point(i,r))[2] = 10;	      
+	    }
+	  }
+	}
 	cvimgs_v.emplace_back(std::move(cvimg));
+	p++;
       }
     }
 #endif
@@ -603,6 +616,7 @@ int main( int nargs, char** argv ) {
     std::vector<larcv::Image2D> truthfilter_clusterpix_v;
 
     int numtruth_in_contour = 0;
+    int numtruth_valid_contour = 0;
     int numtruth = 0;
     for ( int testindex=0; testindex<(int)xingptdata_prefilter.truthcrossingptinfo_v.size(); testindex++) {
       larlitecv::TruthCrossingPointAna_t& info = xingptdata_prefilter.truthcrossingptinfo_v[testindex];
@@ -613,6 +627,8 @@ int main( int nargs, char** argv ) {
       bool incontour = contour_truthfilter_algo.buildCluster( imgs_v, badch_v, truthfilter_clusterpix_v, testpt, bmtcv_algo.m_plane_atomicmeta_v, max_dist2contour );
       if ( incontour )
 	numtruth_in_contour++;
+      if ( contour_truthfilter_algo.cuts[1] )
+	numtruth_valid_contour++;
       numtruth++;
       
 // #ifdef USE_OPENCV
@@ -628,7 +644,8 @@ int main( int nargs, char** argv ) {
       
     }
     
-    std::cout << "BMT Contour Filter on truth points: " << float(numtruth_in_contour)/float(numtruth) << std::endl;
+    std::cout << "BMT Contour Filter on truth points (in contour): " << float(numtruth_in_contour)/float(numtruth) << std::endl;
+    std::cout << "BMT Contour Filter on truth points (consitent contours): " << float(numtruth_valid_contour)/float(numtruth) << std::endl;    
     //cc_algo.buildCluster( imgs_v, badch_v, clusterpix_v, testpt,  bmtcv_algo.m_plane_atomicmeta_v );
 
     // PASS RECO POINTS THROUGH CONTOUR FILTER
@@ -639,9 +656,11 @@ int main( int nargs, char** argv ) {
 
     int numreco_good_in_contour = 0;
     int numreco_bad_in_contour = 0;    
-    int numreco_good = 0;
-    int numreco_bad = 0;    
+    int numreco_good_tot = 0;
+    int numreco_bad_tot  = 0;    
     int ireco = -1;
+    int numreco_good[7][2] = {0};
+    int numreco_bad[7][2]  = {0};    
     for ( auto const& p_sp_v : prefilter_spacepoints_v ) {
       for (auto const& sp : *p_sp_v ) {
 	ireco++;
@@ -650,22 +669,29 @@ int main( int nargs, char** argv ) {
 	std::vector<float> testpt(3,0);
 	for (int i=0; i<3; i++)
 	  testpt[i] =  sp.pos()[i];
+	std::cout << "============ [ RECO #" << ireco << " ] =============" << std::endl;
 	bool incontour = contour_recofilter_algo.buildCluster( imgs_v, badch_v, recofilter_clusterpix_v, testpt, bmtcv_algo.m_plane_atomicmeta_v, max_dist2contour );
+	bool seedclusterok = contour_recofilter_algo.cuts[1];
 	if ( recoinfo.truthmatch==1 ) {
-	  numreco_good++;
-	  if ( incontour ) {
+	  numreco_good_tot++;
+	  numreco_good[sp.type()][1]++;	  
+	  if ( incontour && seedclusterok) {
 	    numreco_good_in_contour++;
-	    recofilter_passes[ireco] = 1;
+	    numreco_good[sp.type()][0]++;
 	  }
 	}
 	else {
-	  numreco_bad++;
-	  if ( incontour ) {
+	  numreco_bad_tot++;
+	  numreco_bad[sp.type()][1]++;
+	  if ( incontour && seedclusterok) {
 	    numreco_bad_in_contour++;
-	    recofilter_passes[ireco] = 1;	    
+	    numreco_bad[sp.type()][0]++;	    
 	  }
 	}
-      
+	
+	bool passes = incontour & seedclusterok;
+	if ( passes )
+	  recofilter_passes[ireco] = 1;	 	  
 #ifdef USE_OPENCV
 	std::vector<int> testptpix = larcv::UBWireTool::getProjectedImagePixel( testpt, imgs_v.front().meta(), 3 );
 	//std::cout << "testptpix: (" << testptpix[0] << "," << testptpix[1] << "," << testptpix[2] << "," << testptpix[3] << ")" << std::endl;
@@ -687,13 +713,13 @@ int main( int nargs, char** argv ) {
 	  ptname << "#I" << ireco;
 
 	for (int p=0; p<3; p++) {
-	  if ( incontour ) {
+	  if ( passes ) {
 	    cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 3, cv::Scalar( 255, 0, 255, 255 ), 1 );
 	    cv::putText( cvimgs_v[p], cv::String(ptname.str()), cv::Point(testptpix[p+1]+2,testptpix[0]), cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255,0,255,255) );
 	  }
 	  else  {
-	    cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 3, cv::Scalar( 255, 255, 0, 255 ), 1 );
-	    cv::putText( cvimgs_v[p], cv::String(ptname.str()), cv::Point(testptpix[p+1]+2,testptpix[0]), cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255,255,0,255) );	    	    
+	    cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 3, cv::Scalar( 51, 151, 255, 255 ), 1 );
+	    cv::putText( cvimgs_v[p], cv::String(ptname.str()), cv::Point(testptpix[p+1]+2,testptpix[0]), cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(51,151,255,255) );	    	    
 	  }
 	}
 #endif
@@ -701,8 +727,22 @@ int main( int nargs, char** argv ) {
       }//end of sp loop
     }//end of spacepoint v
     std::cout << "BMT Contour Filter on reco points ----------------- " << std::endl;
-    std::cout << "  Good Points in contour: " << numreco_good_in_contour << " of " << numreco_good << std::endl;
-    std::cout << "  Bad Points in contour:  " << numreco_bad_in_contour << " of " << numreco_bad << std::endl;
+    std::cout << "  Good Points in contour: " << numreco_good_in_contour << " of " << numreco_good_tot << std::endl;
+    std::cout << "    top: " << numreco_good[0][0] << "/" << numreco_good[0][1] << std::endl;
+    std::cout << "    bot: " << numreco_good[1][0] << "/" << numreco_good[1][1] << std::endl;
+    std::cout << "    ups: " << numreco_good[2][0] << "/" << numreco_good[2][1] << std::endl;
+    std::cout << "    dwn: " << numreco_good[3][0] << "/" << numreco_good[3][1] << std::endl;
+    std::cout << "    anode: " << numreco_good[4][0] << "/" << numreco_good[4][1] << std::endl;
+    std::cout << "    cathode: " << numreco_good[5][0] << "/" << numreco_good[5][1] << std::endl;
+    std::cout << "    imgends: " << numreco_good[6][0] << "/" << numreco_good[6][1] << std::endl;            
+    std::cout << "  Bad Points in contour:  " << numreco_bad_in_contour << " of " << numreco_bad_tot << std::endl;
+    std::cout << "    top: " << numreco_bad[0][0] << "/" << numreco_bad[0][1] << std::endl;
+    std::cout << "    bot: " << numreco_bad[1][0] << "/" << numreco_bad[1][1] << std::endl;
+    std::cout << "    ups: " << numreco_bad[2][0] << "/" << numreco_bad[2][1] << std::endl;
+    std::cout << "    dwn: " << numreco_bad[3][0] << "/" << numreco_bad[3][1] << std::endl;
+    std::cout << "    anode: " << numreco_bad[4][0] << "/" << numreco_bad[4][1] << std::endl;
+    std::cout << "    cathode: " << numreco_bad[5][0] << "/" << numreco_bad[5][1] << std::endl;
+    std::cout << "    imgends: " << numreco_bad[6][0] << "/" << numreco_bad[6][1] << std::endl;                
     std::cout << "--------------------------------------------------- " << std::endl;
     
     

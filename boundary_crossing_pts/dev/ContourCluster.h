@@ -13,7 +13,7 @@
 
 namespace larlitecv {
 
-  class ContourCluster : std::vector< std::vector<ContourShapeMeta> > {
+  class ContourCluster : public std::vector< std::vector<ContourShapeMeta> > {
     friend class ContourClusterAlgo;
   public:
     ContourCluster() {};
