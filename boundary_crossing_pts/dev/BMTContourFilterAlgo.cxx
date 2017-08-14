@@ -166,9 +166,9 @@ namespace larlitecv {
       int containing_idx = -1;
       for (int idx=0; idx<(int)plane_contours_v[p].size(); idx++) {
 	// test imgpt
-	bool bboxcontains = plane_contours_v[p][idx].getBBox().contains( imgpt[p] );
-	if ( !bboxcontains )
-	  continue;
+	// bool bboxcontains = plane_contours_v[p][idx].getBBox().contains( imgpt[p] );
+	// if ( !bboxcontains )
+	//   continue;
 
 	// more detailed test
 	double dist = cv::pointPolygonTest( plane_contours_v[p][idx], imgpt[p], true );

@@ -65,9 +65,10 @@
 #include "ChargeSegmentAlgos/PathPixelChargeMethods.h"
 
 // dev
-#include "BMTCV.h"
+#include "TaggerContourTools/BMTCV.h"
 #include "BMTContourFilterAlgo.h"
 #include "ContourClusterAlgo.h"
+#include "ContourAStarClusterAlgo.h"
 
 int main( int nargs, char** argv ) {
   
@@ -129,6 +130,7 @@ int main( int nargs, char** argv ) {
   std::vector<float> label_thresholds_v( 3, -10 );  
   std::vector<int> label_neighborhood(3,0);
   const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;  
+  std::string spacepoint_producers[7] = { "topspacepts", "botspacepts", "upspacepts", "downspacepts", "anodepts", "cathodepts", "imgendpts" };
   
  // =====================================================================
 
@@ -173,11 +175,11 @@ int main( int nargs, char** argv ) {
   tree->Branch( "ntracks_recod_2planeq", &ntracks_recod_2planeq, "ntracks_recod_2planeq/I" );
   tree->Branch( "ntracks_all", &ntracks_all, "ntracks_all/I" );
   tree->Branch( "ntracks_recod_all", &ntracks_recod_all, "ntracks_recod_all/I" );  
-   
-  xingptdata.bindToTree( tree );
 
+  // This data stores results from point of truth crossings
   int mcxingpt_type;
   int mcxingpt_matched;
+  int mcxingpt_flashmatched;
   int mcxingpt_matched_type;
   int mcxingpt_nplaneswcharge;
   int mcxingpt_wire[3];
@@ -188,6 +190,7 @@ int main( int nargs, char** argv ) {
   for ( int i=0; i<3; i++) {
     xingpt_trees[i]->Branch( "truth_type", &mcxingpt_type, "truth_type/I" );
     xingpt_trees[i]->Branch( "matched", &mcxingpt_matched, "matched/I" );
+    xingpt_trees[i]->Branch( "flashmatched", &mcxingpt_flashmatched, "flashmatched/I" );    
     xingpt_trees[i]->Branch( "matched_type", &mcxingpt_matched_type, "matched_type/I" );  
     xingpt_trees[i]->Branch( "nplaneswcharge", &mcxingpt_nplaneswcharge, "nplaneswcharge/I" );
     xingpt_trees[i]->Branch( "wire", mcxingpt_wire, "wire[3]/I" );
@@ -195,6 +198,21 @@ int main( int nargs, char** argv ) {
     xingpt_trees[i]->Branch( "dwall", &mcxingpt_dwall, "dwall/F" );    
     xingpt_trees[i]->Branch( "pos", mcxingpt_pos, "pos[3]/F" );
   }
+
+  // results from point of view of reco. true versus false positives.
+  float reco_mindist2true = 0;
+  int   reco_nplaneswcharge = 0;
+  int   reco_type  = 0;
+  int   reco_matched = 0;
+  int   reco_matchedtype = 0;
+  int   reco_passes = 0;
+  TTree* recoxingpt_tree = new TTree("recoxingptana", "Reco crossing points");
+  recoxingpt_tree->Branch("type",&reco_type,"type/I");
+  recoxingpt_tree->Branch("matched",&reco_matched,"matched/I");  
+  recoxingpt_tree->Branch("matchedtype",&reco_matchedtype,"matchedtype/I");
+  recoxingpt_tree->Branch("passes",&reco_passes,"passes/I");
+  recoxingpt_tree->Branch("nplaneswcharge",&reco_nplaneswcharge,"nplaneswcharge/I");
+  recoxingpt_tree->Branch("mindist2true",&reco_mindist2true,"mindist2true/F");
   
   /// ---------------------------------------------------------------------------------------
   // ALGO SETUP
@@ -284,6 +302,8 @@ int main( int nargs, char** argv ) {
 
     // ok now to do damage
 
+    // --------------------------------------------------------------------------------------------------------------------
+    // LOAD IMAGES 
     // get the original, segmentation, and tagged images
     larcv::EventImage2D* ev_imgs   = (larcv::EventImage2D*)dataco[kSource].get_larcv_data(larcv::kProductImage2D,inputimgs);
     larcv::EventImage2D* ev_badch  = NULL;
@@ -307,39 +327,6 @@ int main( int nargs, char** argv ) {
       ev_gapch->Emplace( std::move(gapch_v) );
     }
     
-    // // get the output of the tagger
-    // larcv::EventPixel2D* ev_pix[kNumStages] = {0};
-    // larlite::event_track* ev_track[kNumStages] = {0};
-    // try {
-    //   ev_pix[kThruMu]    = (larcv::EventPixel2D*)dataco[kCROIfile].get_larcv_data(larcv::kProductPixel2D,stages_pixel_producers[kThruMu]);
-    //   ev_track[kThruMu]  = (larlite::event_track*)dataco[kCROIfile].get_larlite_data(larlite::data::kTrack,stages_track_producers[kThruMu]);      
-    // }
-    // catch (...) {
-    //   ev_pix[kThruMu] = NULL;
-    //   ev_track[kThruMu] = NULL;
-    // }
-    // try {
-    //   ev_pix[kStopMu]    = (larcv::EventPixel2D*)dataco[kCROIfile].get_larcv_data(larcv::kProductPixel2D,stages_pixel_producers[kStopMu]);
-    //   ev_track[kStopMu]  = (larlite::event_track*)dataco[kCROIfile].get_larlite_data(larlite::data::kTrack,stages_track_producers[kStopMu]);            
-    // }
-    // catch (...) {
-    //   ev_pix[kStopMu] = NULL;
-    // }
-    // try {
-    //   ev_pix[kUntagged]  = (larcv::EventPixel2D*)dataco[kCROIfile].get_larcv_data(larcv::kProductPixel2D,stages_pixel_producers[kUntagged]);
-    //   ev_track[kUntagged]  = (larlite::event_track*)dataco[kCROIfile].get_larlite_data(larlite::data::kTrack,stages_track_producers[kUntagged]);                  
-    // }
-    // catch (...) {
-    //   ev_pix[kUntagged] = NULL;
-    // }
-    // try {
-    //   ev_pix[kCROI]      = (larcv::EventPixel2D*)dataco[kCROIfile].get_larcv_data(larcv::kProductPixel2D,stages_pixel_producers[kCROI]);
-    //   ev_track[kCROI]  = (larlite::event_track*)dataco[kCROIfile].get_larlite_data(larlite::data::kTrack,stages_track_producers[kCROI]);                  
-    // }
-    // catch (...) {
-    //   ev_pix[kCROI] = NULL;
-    // }
-
     const std::vector<larcv::Image2D>& imgs_v   = ev_imgs->Image2DArray();
     const std::vector<larcv::Image2D>& badch_v  = ev_badch->Image2DArray();
     const std::vector<larcv::Image2D>* segs_v   = NULL;
@@ -368,40 +355,10 @@ int main( int nargs, char** argv ) {
       }
     }
 #endif
-    
-    // // get the result of the contained ROI analysis
-    // larcv::EventROI* ev_contained_roi = NULL;
-    // try {
-    //   ev_contained_roi = (larcv::EventROI*)dataco[kCROIfile].get_larcv_data(larcv::kProductROI,"croi");
-    // }
-    // catch (...) {
-    //   ev_contained_roi = NULL;
-    // }
-    // std::vector<larcv::ROI> containedrois_v;
-    // if ( ev_contained_roi ) {
-    //   containedrois_v = ev_contained_roi->ROIArray();
-    //   num_rois = (int)containedrois_v.size();
-    //   std::cout << "====ROIs===========================" << std::endl;
-    //   for ( auto& roi : containedrois_v ) {
-    // 	std::cout << " roi: " << roi.dump();
-    //   }
-    //   std::cout << "===================================" << std::endl;
-    // }
-      
-    // get the boundary end point info (only if have MC info to compare against)
-    std::vector<larcv::EventPixel2D*> ev_spacepoints(7,0);
-    std::string spacepoint_producers[7] = { "topspacepts", "botspacepts", "upspacepts", "downspacepts", "anodepts", "cathodepts", "imgendpts" };
-    for ( int i=0; i<7; i++ ) {
-      try {
-    	ev_spacepoints[i] = (larcv::EventPixel2D*)dataco[kCROIfile].get_larcv_data(larcv::kProductPixel2D,spacepoint_producers[i]);
-      }
-      catch (...) {
-    	ev_spacepoints[i] = NULL;
-      }
-      if ( ev_spacepoints[i]!=NULL )
-    	std::cout << "number of " << spacepoint_producers[i] << ": " << ev_spacepoints[i]->Pixel2DArray(0).size() << std::endl;	
-    }
 
+    // --------------------------------------------------------------------------------------------------------------------
+    // OPFLASHES
+    
     // get the opflashes
     std::vector< larlite::event_opflash* > event_opflash_v;
     for ( auto const& prodname : flashprod ) {
@@ -410,7 +367,9 @@ int main( int nargs, char** argv ) {
       event_opflash_v.push_back( ev_flash );
     }
 
-    // get other information, e.g. truth
+    // --------------------------------------------------------------------------------------------------------------------
+    // MC TRUTH/TRIGGER
+
     larlite::event_mctruth* ev_mctruth   = NULL;
     larlite::event_mctrack* ev_mctrack   = NULL;
     larlite::event_mcshower* ev_mcshower = NULL; 
@@ -430,16 +389,12 @@ int main( int nargs, char** argv ) {
 
     // quantities filled if MC present
     std::vector<larcv::Image2D> nupix_imgs_v;
-    // std::vector< std::vector<int> > start_pixels;
-    // std::vector< std::vector<float> > start_crossingpts;
-    // std::vector< std::vector<int> > end_pixels;
-    // std::vector< std::vector<float> > end_crossingpts;
     std::vector<int> vertex_col(3,-1);
     std::vector<double> vtx_sce(3,0);
     int vertex_row = -1;
 
     if ( ismc ) {
-
+      
       // loop over MC tracks, get end points of muons
       larlitecv::analyzeCrossingMCTracks( xingptdata, imgs_v.front().meta(),  imgs_v, ev_trigger, ev_mctrack, event_opflash_v, printFlashEnds );
       // copy to other structs
@@ -604,12 +559,35 @@ int main( int nargs, char** argv ) {
     
     if ( ismc ) {
       larlitecv::analyzeCrossingMatches( xingptdata_prefilter, prefilter_spacepoints_v, imgs_v.front().meta(), fMatchRadius );
+
+      // store the pre-filter data into the tree
+      int numpts = xingptdata_prefilter.truthcrossingptinfo_v.size();
+      for (int ipt=0; ipt<numpts; ipt++) {
+	larlitecv::TruthCrossingPointAna_t& info = xingptdata_prefilter.truthcrossingptinfo_v[ipt];
+	
+	mcxingpt_type           = info.type;
+	mcxingpt_matched        = info.matched;
+	if ( info.flashindex>=0 )
+	  mcxingpt_flashmatched = 1;
+	else
+	  mcxingpt_flashmatched = 0;
+	mcxingpt_matched_type   = info.matched_type;
+	mcxingpt_nplaneswcharge = info.nplanes_w_charge;
+	for (int p=0; p<3; p++) {
+	  mcxingpt_wire[p]      = info.imgcoord[p+1];
+	  mcxingpt_pos[p]       = info.crossingpt_det[p];
+	}
+	mcxingpt_dist           = info.matched_dist;
+	xingpt_trees[1]->Fill();
+      }
     }
       
     // --------------------------------------------------------------------------------
     // RECO DEV:
     // BMTCV
-    bmtcv_algo.analyzeImages( imgs_v, badch_v, 10.0 );
+    bmtcv_algo.analyzeImages( imgs_v, badch_v, 10.0, 2 );
+
+    // RECO DEV: Contour-based Filter
     
     // Pass Truth End points through the filter    
     larlitecv::BMTContourFilterAlgo contour_truthfilter_algo;
@@ -630,18 +608,6 @@ int main( int nargs, char** argv ) {
       if ( contour_truthfilter_algo.cuts[1] )
 	numtruth_valid_contour++;
       numtruth++;
-      
-// #ifdef USE_OPENCV
-//       std::vector<int> testptpix = larcv::UBWireTool::getProjectedImagePixel( testpt, imgs_v.front().meta(), 3 );
-//       std::cout << "testptpix: (" << testptpix[0] << "," << testptpix[1] << "," << testptpix[2] << "," << testptpix[3] << ")" << std::endl;
-//       for (int p=0; p<3; p++) {
-// 	if ( incontour )
-// 	  cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 10, cv::Scalar( 255, 0, 255, 255 ), 1 );
-// 	else
-// 	  cv::circle( cvimgs_v[p], cv::Point(testptpix[p+1],testptpix[0]), 10, cv::Scalar( 255, 255, 0, 255 ), 1 );	  
-//       }
-// #endif
-      
     }
     
     std::cout << "BMT Contour Filter on truth points (in contour): " << float(numtruth_in_contour)/float(numtruth) << std::endl;
@@ -653,6 +619,8 @@ int main( int nargs, char** argv ) {
     larlitecv::BMTContourFilterAlgo contour_recofilter_algo;
     std::vector<larcv::Image2D> recofilter_clusterpix_v;
     std::vector< int > recofilter_passes( xingptdata_prefilter.recocrossingptinfo_v.size(), 0 );
+    std::vector< int > recofilter_good( xingptdata_prefilter.recocrossingptinfo_v.size(), 0 );    
+    std::vector< larlitecv::BoundarySpacePoint > contourpassing_spacepoints_v;
 
     int numreco_good_in_contour = 0;
     int numreco_bad_in_contour = 0;    
@@ -672,9 +640,15 @@ int main( int nargs, char** argv ) {
 	std::cout << "============ [ RECO #" << ireco << " ] =============" << std::endl;
 	bool incontour = contour_recofilter_algo.buildCluster( imgs_v, badch_v, recofilter_clusterpix_v, testpt, bmtcv_algo.m_plane_atomicmeta_v, max_dist2contour );
 	bool seedclusterok = contour_recofilter_algo.cuts[1];
+
+	// override pass all
+	incontour = true;
+	seedclusterok = true;
+	
 	if ( recoinfo.truthmatch==1 ) {
 	  numreco_good_tot++;
-	  numreco_good[sp.type()][1]++;	  
+	  numreco_good[sp.type()][1]++;
+	  recofilter_good[ireco] = 1;
 	  if ( incontour && seedclusterok) {
 	    numreco_good_in_contour++;
 	    numreco_good[sp.type()][0]++;
@@ -690,9 +664,13 @@ int main( int nargs, char** argv ) {
 	}
 	
 	bool passes = incontour & seedclusterok;
-	if ( passes )
-	  recofilter_passes[ireco] = 1;	 	  
+	if ( passes ) {
+	  recofilter_passes[ireco] = 1;
+	  contourpassing_spacepoints_v.push_back( sp );
+	}
+	
 #ifdef USE_OPENCV
+	// Visualize
 	std::vector<int> testptpix = larcv::UBWireTool::getProjectedImagePixel( testpt, imgs_v.front().meta(), 3 );
 	//std::cout << "testptpix: (" << testptpix[0] << "," << testptpix[1] << "," << testptpix[2] << "," << testptpix[3] << ")" << std::endl;
 
@@ -745,6 +723,23 @@ int main( int nargs, char** argv ) {
     std::cout << "    imgends: " << numreco_bad[6][0] << "/" << numreco_bad[6][1] << std::endl;                
     std::cout << "--------------------------------------------------- " << std::endl;
     
+    // ========================================================================================
+    //  DEV: ContourAStarCluster
+
+    larlitecv::ContourAStarClusterAlgo astarcontour_algo;
+    // find a good point to seed
+    const larlitecv::BoundarySpacePoint& astar_test_pt = contourpassing_spacepoints_v[8];
+    larlitecv::ContourAStarCluster astar_cluster = astarcontour_algo.buildClusterFromSeed( astar_test_pt.pos(), imgs_v, bmtcv_algo.m_plane_atomicmeta_v, -10 );
+
+    for (int p=0; p<3; p++) {
+      std::stringstream path;
+      path << "boundaryptimgs/astarcluster_test_r" << run << "_s" << subrun << "_e" << event << "_p" << p << ".png";
+      cv::imwrite( path.str(), astar_cluster.m_cvimg_v[p] );
+    }
+    
+
+    // =========================================================================================
+
     
     // dump the images
     // print
@@ -754,91 +749,47 @@ int main( int nargs, char** argv ) {
       cv::imwrite( path.str(), bmtcv_algo.cvimg_stage0_v[p] );
     }
     
-    
-    // --------------------------------------------------------------------------------
-    // DATA vs. MC comparison: pre filter
-    /*
-    
+
     if ( ismc ) {
-      // Compare reco and MC crossing point info
-      larlitecv::analyzeCrossingMatches( xingptdata_prefilter, prefilter_spacepoints_v, imgs_v.front().meta(), fMatchRadius );
+      std::vector< const std::vector<larlitecv::BoundarySpacePoint>*  > postfilter_spacepoints_v;
+      postfilter_spacepoints_v.push_back( &contourpassing_spacepoints_v );
+      larlitecv::analyzeCrossingMatches( xingptdata_postfilter, postfilter_spacepoints_v, imgs_v.front().meta(), fMatchRadius );
 
-      // store the data into the tree
-      for (int istartpt=0; istartpt<(int)xingptdata_prefilter.start_type.size(); istartpt++) {
-	mcxingpt_type           = xingptdata_prefilter.start_type[istartpt];
-	mcxingpt_matched        = xingptdata_prefilter.matched_startpoint[istartpt];
-	if ( xingptdata_prefilter.matched_startpoint[istartpt] )
-	  mcxingpt_matched      = 1;
-	else
-	  mcxingpt_matched      = 0;	
-	mcxingpt_matched_type   = xingptdata_prefilter.matched_startpoint_type[istartpt];
-	mcxingpt_nplaneswcharge = xingptdata_prefilter.start_crossing_nplanes_w_charge[istartpt];
-	for (int p=0; p<3; p++) {
-	  mcxingpt_wire[p]      = xingptdata_prefilter.start_pixels[istartpt][p];
-	  mcxingpt_pos[p]       = xingptdata_prefilter.start_crossingpts[istartpt][p];
-	}
-	mcxingpt_dist           = xingptdata_prefilter.start_closest_match_dist[istartpt];
-	std::vector<double> sce_offsets = sce.GetPosOffsets( mcxingpt_pos[0], mcxingpt_pos[1], mcxingpt_pos[2] );
-	std::vector<float> pos_sce(3,0);
-	pos_sce[0] = mcxingpt_pos[0] - sce_offsets[0] + 0.7;
-	pos_sce[1] = mcxingpt_pos[1] + sce_offsets[1];
-	pos_sce[2] = mcxingpt_pos[2] + sce_offsets[2];
-	int btype = 0;
-	mcxingpt_dwall = larlitecv::dwall( pos_sce, btype );
-	mcxingpt_prefilter_tree->Fill();
-      }
-
-      for (int iendpt=0; iendpt<(int)xingptdata_prefilter.end_type.size(); iendpt++) {
-	mcxingpt_type           = xingptdata_prefilter.end_type[iendpt];
-	if ( xingptdata_prefilter.matched_endpoint[iendpt] )
-	  mcxingpt_matched      = 1;
-	else
-	  mcxingpt_matched      = 0;
-	mcxingpt_matched_type   = xingptdata_prefilter.matched_endpoint_type[iendpt];
-	mcxingpt_nplaneswcharge = xingptdata_prefilter.end_crossing_nplanes_w_charge[iendpt];
-	for (int p=0; p<3; p++) {
-	  mcxingpt_wire[p]      = xingptdata_prefilter.end_pixels[iendpt][p];
-	  mcxingpt_pos[p]       = xingptdata_prefilter.end_crossingpts[iendpt][p];
-	}
-	mcxingpt_dist           = xingptdata_prefilter.end_closest_match_dist[iendpt];
-	std::vector<double> sce_offsets = sce.GetPosOffsets( mcxingpt_pos[0], mcxingpt_pos[1], mcxingpt_pos[2] );
-	std::vector<float> pos_sce(3,0);
-	pos_sce[0] = mcxingpt_pos[0] - sce_offsets[0] + 0.7;
-	pos_sce[1] = mcxingpt_pos[1] + sce_offsets[1];
-	pos_sce[2] = mcxingpt_pos[2] + sce_offsets[2];
-	int btype = 0;
-	mcxingpt_dwall = larlitecv::dwall( pos_sce, btype );	
-	mcxingpt_prefilter_tree->Fill();
-      }
-
-      // analyze filter: run, tally performance
-      for (int ireco=0; ireco<(int)prefilter_spacepoints_v; ireco++) {
+      // store the post-filter data into the tree
+      int numpts = xingptdata_postfilter.truthcrossingptinfo_v.size();
+      for (int ipt=0; ipt<numpts; ipt++) {
+	larlitecv::TruthCrossingPointAna_t& info = xingptdata_postfilter.truthcrossingptinfo_v[ipt];
 	
-      }
-      
-      // analyze substages of boundary end point analysis
-      // we check if the true crossing point locations in the image were
-      // marked by the BoundaryMatchAlgo substage
-      // for (int istartpt=0; istartpt<(int)xingptdata_prefilter.start_type.size(); istartpt++) {
-      // }
-      
-    }
-
-    // ---------------------------------------------------------------------------------
-    // DRAW RESULTS
-#ifdef USE_OPENCV
-    // DRAW THE CROSSING POINTS
-    for ( auto const& p_sp_v : prefilter_spacepoints_v ) {
-      for ( auto const& sp : *p_sp_v ) {
+	mcxingpt_type           = info.type;
+	mcxingpt_matched        = info.matched;
+	if ( info.flashindex>=0 )
+	  mcxingpt_flashmatched = 1;
+	else
+	  mcxingpt_flashmatched = 0;
+	mcxingpt_matched_type   = info.matched_type;
+	mcxingpt_nplaneswcharge = info.nplanes_w_charge;
 	for (int p=0; p<3; p++) {
-	  auto const& cvimg = cvimgs_v[p];
-	  auto const& endpt = sp.at(p);
-	  cv::circle( cvimg, cv::Point(endpt.col,endpt.row), 3, cv::Scalar( 0, 255, 0, 255 ), -1 );
+	  mcxingpt_wire[p]      = info.imgcoord[p+1];
+	  mcxingpt_pos[p]       = info.crossingpt_det[p];
 	}
+	mcxingpt_dist           = info.matched_dist;
+	xingpt_trees[2]->Fill();
+      }
+
+      // store the post-filter reco data into the tree
+      numpts = (int)xingptdata_prefilter.recocrossingptinfo_v.size();
+      for (int ireco=0; ireco<numpts; ireco++) {
+	larlitecv::RecoCrossingPointAna_t& info = xingptdata_prefilter.recocrossingptinfo_v[ireco];
+	reco_type = info.type;
+	reco_matched = info.truthmatch;
+	reco_matchedtype = info.truthmatch_type;
+	reco_mindist2true = info.truthmatch_dist;
+	reco_nplaneswcharge = 3;
+	reco_passes = recofilter_passes[ireco];
+	recoxingpt_tree->Fill();
       }
     }
-    */
-    
+        
     // DRAW THE BOUNDARY POINTS IMAGES
     std::cout << "BoundaryPixel Images: " << boundarypixel_image_v.size() << std::endl;
     std::cout << "RealSpaceHit Images: " << realspacehit_image_v.size()  << std::endl;    
