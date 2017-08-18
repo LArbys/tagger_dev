@@ -30,6 +30,7 @@ namespace larlitecv {
     };
     virtual ~ContourAStarCluster() {};
 
+    int numPlanes() { return m_nplanes; };
     
     //protected:
   public: // temporary for debug
@@ -37,6 +38,7 @@ namespace larlitecv {
     std::vector< std::vector< const ContourShapeMeta*> > m_plane_contours; //< contours we've added to the cluster
     std::vector< larcv::Image2D > m_clusterimg_v; //< contains a binary image of our cluster (should be a cv::Mat)
     std::vector< cv::Mat > m_cvimg_v; //< stores binary image of pixels that are a part of the cluster
+    cv::Mat m_cvimg_debug;
 
     //std::vector< std::vector< std::vector<cv::Point> > > m_current_contours;
     std::vector< std::vector< ContourShapeMeta > > m_current_contours;    
@@ -47,7 +49,11 @@ namespace larlitecv {
     void addContour( int plane, const larlitecv::ContourShapeMeta* ctr, int idx );
     void updateCVImage();
     void updateClusterContour();
-    std::vector<int> getOverlappingRowRange();    
+    std::vector<int> getOverlappingRowRange();
+    void getCluster3DPointAtTimeTick( const int row, const std::vector<larcv::Image2D>& img_v,
+				      const std::vector<larcv::Image2D>& badch_v, bool use_badch,
+				      std::vector<int>& imgcoords, std::vector<float>& pos3d );
+    
   };
   
   class ContourAStarClusterAlgo {
@@ -63,6 +69,12 @@ namespace larlitecv {
     ContourAStarCluster makeSeedClustersFrom3DPoint( const std::vector<float>& pos3d, const std::vector<larcv::Image2D>& img_v,
 						     const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
 						     const float min_dist );
+
+    ContourAStarCluster makeCluster( const std::vector<float>& pos3d, const std::vector<larcv::Image2D>& img_v,
+				     const std::vector<larcv::Image2D>& badch_v,
+				     const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+				     const float max_dist2cluster );
+    
     
   };
 

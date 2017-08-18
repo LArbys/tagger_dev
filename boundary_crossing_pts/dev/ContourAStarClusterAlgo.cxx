@@ -6,6 +6,10 @@
 #include "UBWireTool/UBWireTool.h"
 
 #include "CVUtil/CVUtil.h"
+#include "DataFormat/Pixel2D.h"
+
+#include "ThruMu/AStar3DAlgoConfig.h"
+#include "ThruMu/AStar3DAlgo.h"
 
 // LArOpenCV
 #include "LArOpenCV/ImageCluster/AlgoClass/DefectBreaker.h"
@@ -19,6 +23,8 @@ namespace larlitecv {
     m_plane_contours.resize(m_nplanes);
 
     // we make blank cv images
+    m_cvimg_v.clear();
+    m_clusterimg_v.clear();
     for ( auto const& img : img_v ) {
       larcv::Image2D blank( img.meta() );
       blank.paint(0.0);
@@ -26,6 +32,19 @@ namespace larlitecv {
       m_cvimg_v.emplace_back( std::move(cvimg) );
       m_clusterimg_v.emplace_back( std::move(blank) );
     }
+
+    m_cvimg_debug = larcv::as_mat_greyscale2bgr( img_v.front(), 0, 255.0 );
+    for (int p=1; p<m_nplanes; p++) {
+      for (size_t r=0; r<img_v[p].meta().rows(); r++) {
+	for (size_t c=0; c<img_v[p].meta().cols(); c++) {
+	  if ( img_v[p].pixel(r,c)>5.0 ) {
+	    for (int i=0; i<3; i++)
+	      m_cvimg_debug.at<cv::Vec3b>(cv::Point(c,r))[i] = img_v[p].pixel(r,c);
+	  }
+	}
+      }
+    }
+    
   }
 
   void ContourAStarCluster::addContour( int plane, const larlitecv::ContourShapeMeta* ctr, int idx ) {
@@ -50,6 +69,14 @@ namespace larlitecv {
       for ( auto const& pctr : m_plane_contours[p] ) {
 	contour_list.push_back( *pctr );
 	cv::drawContours( m_cvimg_v[p], contour_list, i, cv::Scalar(255,0,0), -1 );
+
+	// debug image
+	if ( p==0 )
+	  cv::drawContours( m_cvimg_debug, contour_list, i, cv::Scalar(255,0,0), 1 );
+	else if (p==1)
+	  cv::drawContours( m_cvimg_debug, contour_list, i, cv::Scalar(0,255,0), 1 );
+	else if ( p==2)
+	  cv::drawContours( m_cvimg_debug, contour_list, i, cv::Scalar(0,0,255), 1 );
       }
       // we copy back into the original image (slow-slow)
       for (size_t r=0; r<m_clusterimg_v[p].meta().rows(); r++) {
@@ -81,15 +108,14 @@ namespace larlitecv {
     int min_row = -1;
     int max_row = -1;
 
+    
     for (int p=0; p<m_nplanes; p++) {
       for ( auto& ctr : m_current_contours[p] ) {
-	if ( min_row > ctr.getFitSegmentStart().y || min_row<0 )
+	
+	if ( min_row < ctr.getFitSegmentStart().y || min_row<0 )
 	  min_row = ctr.getFitSegmentStart().y;
-	if ( max_row < ctr.getFitSegmentStart().y || max_row<0 )
-	  max_row = ctr.getFitSegmentStart().y;
-	if ( min_row > ctr.getFitSegmentEnd().y || min_row<0 )
-	  min_row = ctr.getFitSegmentEnd().y;
-	if ( max_row < ctr.getFitSegmentEnd().y || max_row<0 )
+
+	if ( max_row > ctr.getFitSegmentEnd().y || max_row<0 )
 	  max_row = ctr.getFitSegmentEnd().y;
       }
     }
@@ -98,6 +124,206 @@ namespace larlitecv {
     range[0] = min_row;
     range[1] = max_row;
     return range;
+  }
+
+  void ContourAStarCluster::getCluster3DPointAtTimeTick( const int row, const std::vector<larcv::Image2D>& img_v,
+							 const std::vector<larcv::Image2D>& badch_v, bool use_badch,
+							 std::vector<int>& imgcoords, std::vector<float>& pos3d ) {
+    // we get 2D points from each plane. Then we infer 3D point
+    struct ctr_pt_t {
+      int plane;
+      int minc;
+      int maxc;
+      int maxq;
+      float maxqc;
+    };
+    
+    std::vector<ctr_pt_t> contour_points;
+    
+    for (int p=0; p<m_nplanes; p++) {
+      const std::vector<ContourShapeMeta>& ctr_v = m_current_contours[p];
+      const larcv::Image2D& img                  = img_v[p];
+      int nfound = 0;
+      for ( auto const& ctr : ctr_v ) {
+
+	// scan across the cols at a certain time and get the min,max and max-q points inside the cluster
+	int minc = -1;
+	int maxc = -1;
+	int maxqc = -1;
+	float maxq = -1;
+	bool incontour = false;
+	for (int c=0; c<(int)img.meta().cols(); c++) {
+	  cv::Point testpt( c, row );
+	  double dist = cv::pointPolygonTest( ctr, testpt, false );
+	  //std::cout << "point (" << c << "," << row << ") dist=" << dist << " incontour=" << incontour << std::endl;
+	  if ( dist<0 ) {
+	    if ( incontour ) {
+	      // close out a contour crossing
+	      ctr_pt_t ctr_xing;
+	      ctr_xing.plane = p;
+	      ctr_xing.minc  = minc;
+	      ctr_xing.maxc  = maxc;
+	      ctr_xing.maxq  = maxq;
+	      ctr_xing.maxqc = maxqc;
+	      contour_points.emplace_back( std::move(ctr_xing) );
+	      incontour = false;
+	      minc = -1;
+	      maxc = -1;
+	      maxqc = -1;
+	      maxq = -1;
+	      nfound++;
+	    }
+	    continue;	    
+	  }
+
+	  incontour = true;
+	  
+	  if ( minc<0 || c<minc ) {
+	    minc = c;
+	  }
+	  if ( maxc<0 || c>maxc )
+	    maxc = c;
+	  if ( maxq<0 || img.pixel(row,c)>maxq ) {
+	    maxq  = img.pixel(row,c);
+	    maxqc = c;
+	  }
+	}//end of col loops
+      }//end of loop ctr on the plane
+      std::cout << "Number of contour points of plane #" << p << ": " << nfound << std::endl;
+    }//end of plane loop
+
+
+    // We make 3D points based on 2 plane crossings: we check if point inside the other plane
+    // (this is for non-horizontal tracks. for that we have to use the edges)
+    // we remove close points as well
+    int npts = contour_points.size();
+    imgcoords.resize(4,0);
+    pos3d.resize(3,0);
+    for (int a=0; a<npts; a++) {
+      ctr_pt_t& pta = contour_points[a];
+      for (int b=a+1; b<npts; b++) {
+	ctr_pt_t& ptb = contour_points[b];
+	if ( pta.plane==ptb.plane )
+	  continue; // don't match the same planes, bruh
+
+	int otherp;
+	int otherw;
+	int crosses;
+	std::vector<float> xsec_zy(2,0);
+	larcv::UBWireTool::getMissingWireAndPlane( pta.plane, pta.maxqc, ptb.plane, ptb.maxqc, otherp, otherw, xsec_zy, crosses );
+
+	// bad crossing or out of wire range
+	if ( crosses==0 || otherw<0 || otherw>=img_v[otherp].meta().max_x() )
+	  continue;
+
+	// check for charge or badch
+	if ( img_v[otherp].pixel( row, otherw )>10 || badch_v[otherp].pixel(row, otherw)>0 ) {
+	  // good point
+	  imgcoords[0] = row;
+	  imgcoords[pta.plane+1] = pta.maxqc;
+	  imgcoords[ptb.plane+1] = ptb.maxqc;
+	  imgcoords[otherp+1]    = otherw;
+
+	  pos3d[0] = img_v.front().meta().pos_x( row ); // tick
+	  pos3d[1] = xsec_zy[1];
+	  pos3d[2] = xsec_zy[0];
+
+	  std::cout << "Produced 3D Point: imgcoords(" << imgcoords[0] << "," << imgcoords[1] << "," << imgcoords[2] << "," << imgcoords[3] << ")"
+		    << " pos3d=(" << pos3d[0] << "," << pos3d[1] << "," << pos3d[2] << ")" << std::endl;
+
+	}
+	
+      }
+    }
+    
+  }
+  
+  // =================================================================================
+  // ALGO METHODS
+
+  ContourAStarCluster ContourAStarClusterAlgo::makeCluster( const std::vector<float>& pos3d, const std::vector<larcv::Image2D>& img_v,
+							    const std::vector<larcv::Image2D>& badch_v,
+							    const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+							    const float max_dist2cluster ) {
+
+    ContourAStarCluster cluster = makeSeedClustersFrom3DPoint( pos3d, img_v, plane_contours_v, max_dist2cluster );
+
+    // now we enter the buiding loop
+    int nloopsteps = 1;
+    int iloop = 0;
+    while( iloop<nloopsteps ) {
+      iloop++;
+      
+      // first get the overlapping time region
+      std::vector<int> timerange = cluster.getOverlappingRowRange();
+      timerange[0]++;
+      timerange[1]--;
+      std::cout << "Time range: [" << timerange[0] << "," << timerange[1] << "]" << std::endl;
+      
+      // draw line
+      cv::line( cluster.m_cvimg_debug, cv::Point(0,timerange[0]), cv::Point(3455,timerange[0]), cv::Scalar(255,255,255), 1 );
+      cv::line( cluster.m_cvimg_debug, cv::Point(0,timerange[1]), cv::Point(3455,timerange[1]), cv::Scalar(255,255,255), 1 );      
+
+      // we scan at the time range for a good 3D point (or points?)
+      std::vector<int> min_imgcoords;
+      std::vector<float> min_pos3d;
+      std::vector<int> max_imgcoords;
+      std::vector<float> max_pos3d;
+      cluster.getCluster3DPointAtTimeTick( timerange[0], img_v, badch_v, true, min_imgcoords, min_pos3d );
+      cluster.getCluster3DPointAtTimeTick( timerange[1], img_v, badch_v, true, max_imgcoords, max_pos3d );
+
+      cv::circle( cluster.m_cvimg_debug, cv::Point(min_imgcoords[1],timerange[0]), 2, cv::Scalar(0,255,255,255), -1 );
+      cv::circle( cluster.m_cvimg_debug, cv::Point(min_imgcoords[2],timerange[0]), 2, cv::Scalar(0,255,255,255), -1 );
+      cv::circle( cluster.m_cvimg_debug, cv::Point(min_imgcoords[3],timerange[0]), 2, cv::Scalar(0,255,255,255), -1 );
+
+      cv::circle( cluster.m_cvimg_debug, cv::Point(max_imgcoords[1],timerange[1]), 2, cv::Scalar(0,255,255,255), -1 );
+      cv::circle( cluster.m_cvimg_debug, cv::Point(max_imgcoords[2],timerange[1]), 2, cv::Scalar(0,255,255,255), -1 );
+      cv::circle( cluster.m_cvimg_debug, cv::Point(max_imgcoords[3],timerange[1]), 2, cv::Scalar(0,255,255,255), -1 );
+      
+      // use astar between these points!
+      larlitecv::AStar3DAlgoConfig astar_cfg;
+      astar_cfg.verbosity = 1;      
+      astar_cfg.min_nplanes_w_hitpixel = 2;
+      astar_cfg.min_nplanes_w_charge = 2;
+      astar_cfg.astar_threshold.resize(3,5);
+      astar_cfg.astar_neighborhood.resize(3,3);
+      astar_cfg.restrict_path = true;
+      astar_cfg.path_restriction_radius = 10.0;
+      astar_cfg.accept_badch_nodes = true;
+      astar_cfg.astar_start_padding = 3;
+      astar_cfg.astar_end_padding = 3;
+      astar_cfg.lattice_padding = 3;
+
+      const larcv::ImageMeta& meta = img_v.front().meta();
+      larlitecv::AStar3DAlgo algo( astar_cfg );
+      std::vector<larlitecv::AStar3DNode> path;
+      std::vector< int > start_cols;
+      std::vector< int > end_cols;
+      for (int i=0; i<3; i++) {
+	start_cols.push_back( min_imgcoords[i+1] );
+	end_cols.push_back(   max_imgcoords[i+1] );
+      }
+      int goalhit = 0;
+      path = algo.findpath( img_v, badch_v, badch_v, timerange[0], timerange[1], start_cols, end_cols, goalhit );
+      
+      std::cout << "Goal hit: " << goalhit << " pathsize=" << path.size() << std::endl;
+      for ( auto &node : path ) {
+	std::vector<int> imgcoords = larcv::UBWireTool::getProjectedImagePixel( node.tyz, meta, img_v.size() );
+	imgcoords[0] = meta.row( node.tyz[0] );
+	for (int i=0; i<3; i++) {
+	  cv::circle( cluster.m_cvimg_debug, cv::Point( imgcoords[i+1], imgcoords[0] ), 1, cv::Scalar(255,0,255), -1 );
+	}
+      }
+      
+      // evaluate track.
+      
+      // if good, extend track
+
+      // absorb clusters
+      break;
+    }
+
+    return cluster;
   }
   
   ContourAStarCluster ContourAStarClusterAlgo::makeSeedClustersFrom3DPoint( const std::vector<float>& pos3d, const std::vector<larcv::Image2D>& img_v,
@@ -117,7 +343,7 @@ namespace larlitecv {
       throw std::runtime_error( ss.str() );
     }
 
-    std::cout << __FILE__ << ":" << __LINE__ << " "
+    std::cout << __FILE__ << ":" << __LINE__ << " Seed Point: "
 	      << " pos=" << pos3d[0] << "," << pos3d[1] << "," << pos3d[2]
 	      << "  imgcoords=(" << imgcoords[0] << "," << imgcoords[1] << "," << imgcoords[2] << "," << imgcoords[3] << ")"
 	      << std::endl;
@@ -188,5 +414,6 @@ namespace larlitecv {
     std::cout << "row range: [" << rowrange[0] << "," << rowrange[1] << "]" << std::endl;
     return cluster;
   }
+
   
 }

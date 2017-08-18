@@ -726,16 +726,22 @@ int main( int nargs, char** argv ) {
     // ========================================================================================
     //  DEV: ContourAStarCluster
 
+    std::cout << "===================================================" << std::endl;
+    std::cout << "===================================================" << std::endl;
+    std::cout << " DEV: ContourAStarCluster" << std::endl;
+    
     larlitecv::ContourAStarClusterAlgo astarcontour_algo;
     // find a good point to seed
-    const larlitecv::BoundarySpacePoint& astar_test_pt = contourpassing_spacepoints_v[8];
-    larlitecv::ContourAStarCluster astar_cluster = astarcontour_algo.buildClusterFromSeed( astar_test_pt.pos(), imgs_v, bmtcv_algo.m_plane_atomicmeta_v, -10 );
+    const larlitecv::BoundarySpacePoint& astar_test_pt = contourpassing_spacepoints_v[28];
+    larlitecv::ContourAStarCluster astar_cluster       = astarcontour_algo.makeCluster( astar_test_pt.pos(), imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, -10 );
 
-    for (int p=0; p<3; p++) {
-      std::stringstream path;
-      path << "boundaryptimgs/astarcluster_test_r" << run << "_s" << subrun << "_e" << event << "_p" << p << ".png";
-      cv::imwrite( path.str(), astar_cluster.m_cvimg_v[p] );
-    }
+    //for (int p=0; p<(int)astar_cluster.m_cvimg_v.size(); p++) {
+    std::stringstream path;
+    path << "boundaryptimgs/astarcluster_test_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
+    cv::imwrite( path.str(), astar_cluster.m_cvimg_debug );
+
+    std::cout << "===================================================" << std::endl;
+    std::cout << "===================================================" << std::endl;
     
 
     // =========================================================================================
