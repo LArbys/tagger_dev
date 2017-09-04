@@ -37,13 +37,16 @@ namespace larlitecv {
     std::vector< std::set<int> > m_bmtcv_indices; //< store indices of contours we've used
     std::vector< std::vector< const ContourShapeMeta*> > m_plane_contours; //< contours we've added to the cluster
     std::vector< larcv::Image2D > m_clusterimg_v; //< contains a binary image of our cluster (should be a cv::Mat)
-    std::vector< cv::Mat > m_cvimg_v; //< stores binary image of pixels that are a part of the cluster
+    std::vector< cv::Mat > m_cvimg_v;  //< stores binary image of pixels that are a part of the cluster
+    std::vector< cv::Mat > m_cvpath_v; //< stores binary image of pixels that are a part of the path
     cv::Mat m_cvimg_debug;
 
     //std::vector< std::vector< std::vector<cv::Point> > > m_current_contours;
     std::vector< std::vector< ContourShapeMeta > > m_current_contours;    
 
     int m_nplanes;
+    int m_current_min;
+    int m_current_max;
 
     void setImageMeta( const std::vector<larcv::Image2D>& img_v ); // set the size of the containers which have storage for each plane
     void addContour( int plane, const larlitecv::ContourShapeMeta* ctr, int idx );
@@ -75,10 +78,15 @@ namespace larlitecv {
 				     const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
 				     const float max_dist2cluster );
 
-    void extendClusterUsingAStarPath( ContourAStarCluster& cluster, const std::vector< std::vector<float> >& path3d,
-				      const std::vector<larcv::Image2D>& img_v,
-				      const float distfromend, const float distextended, const float stepsize );
+    std::vector< std::set<int> > extendClusterUsingAStarPath( ContourAStarCluster& cluster, std::vector< std::vector<float> >& path3d,
+							      const std::vector<larcv::Image2D>& img_v,
+							      const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+							      const float distfromend, const float distextended, const float stepsize );
     
+    void fillInClusterImage( ContourAStarCluster& cluster, const std::vector< std::vector<float> >& path3d,
+			     const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v,
+			     const std::vector< std::set<int> >& cluster_indices, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+			     const float maxstepsize, const float tag_qthreshold, const int neighborhood );
     
     
   };

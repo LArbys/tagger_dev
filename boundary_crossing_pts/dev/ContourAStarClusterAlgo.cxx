@@ -27,14 +27,18 @@ namespace larlitecv {
     m_nplanes = img_v.size();
     m_bmtcv_indices.resize(m_nplanes);
     m_plane_contours.resize(m_nplanes);
+    m_current_min = -1;
+    m_current_max = -1;
 
     // we make blank cv images
     m_cvimg_v.clear();
+    m_cvpath_v.clear();
     m_clusterimg_v.clear();
     for ( auto const& img : img_v ) {
       larcv::Image2D blank( img.meta() );
       blank.paint(0.0);
       cv::Mat cvimg = larcv::as_gray_mat( blank, 0, 255.0, 1.0 );
+      m_cvpath_v.push_back( cvimg );
       m_cvimg_v.emplace_back( std::move(cvimg) );
       m_clusterimg_v.emplace_back( std::move(blank) );
     }
@@ -143,6 +147,8 @@ namespace larlitecv {
       int maxq;
       float maxqc;
     };
+
+    const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
     
     std::vector<ctr_pt_t> contour_points;
     
@@ -230,11 +236,13 @@ namespace larlitecv {
 	  imgcoords[ptb.plane+1] = ptb.maxqc;
 	  imgcoords[otherp+1]    = otherw;
 
-	  pos3d[0] = img_v.front().meta().pos_x( row ); // tick
+	  float tick = img_v.front().meta().pos_y( row ); // tick
+	  pos3d[0] = (tick-3200.0)*cm_per_tick;
 	  pos3d[1] = xsec_zy[1];
 	  pos3d[2] = xsec_zy[0];
 
 	  std::cout << "Produced 3D Point: imgcoords(" << imgcoords[0] << "," << imgcoords[1] << "," << imgcoords[2] << "," << imgcoords[3] << ")"
+		    << " tick=" << tick
 		    << " pos3d=(" << pos3d[0] << "," << pos3d[1] << "," << pos3d[2] << ")" << std::endl;
 
 	}
@@ -255,52 +263,62 @@ namespace larlitecv {
     const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
     ContourAStarCluster cluster = makeSeedClustersFrom3DPoint( pos3d, img_v, plane_contours_v, max_dist2cluster );
 
+    // get the first start/end points
+      // first get the overlapping time region
+    std::vector<int> timerange = cluster.getOverlappingRowRange();
+    timerange[0]++;
+    timerange[1]--;
+    std::cout << "Time range: [" << timerange[0] << "," << timerange[1] << "]" << std::endl;
+    cluster.m_current_min = timerange[0];
+    cluster.m_current_max = timerange[1];
+    
+    // draw line
+    cv::line( cluster.m_cvimg_debug, cv::Point(0,timerange[0]), cv::Point(3455,timerange[0]), cv::Scalar(255,255,255), 1 );
+    cv::line( cluster.m_cvimg_debug, cv::Point(0,timerange[1]), cv::Point(3455,timerange[1]), cv::Scalar(255,255,255), 1 );      
+    
+    // we scan at the time range for a good 3D point (or points?)
+    std::vector<int> min_imgcoords;
+    std::vector<float> min_pos3d;
+    std::vector<int> max_imgcoords;
+    std::vector<float> max_pos3d;
+    cluster.getCluster3DPointAtTimeTick( timerange[0], img_v, badch_v, true, min_imgcoords, min_pos3d );
+    cluster.getCluster3DPointAtTimeTick( timerange[1], img_v, badch_v, true, max_imgcoords, max_pos3d );
+
+    // plot for debug ----------------------------------------------------------------------------------------------
+    cv::circle( cluster.m_cvimg_debug, cv::Point(min_imgcoords[1],timerange[0]), 2, cv::Scalar(0,255,255,255), -1 );
+    cv::circle( cluster.m_cvimg_debug, cv::Point(min_imgcoords[2],timerange[0]), 2, cv::Scalar(0,255,255,255), -1 );
+    cv::circle( cluster.m_cvimg_debug, cv::Point(min_imgcoords[3],timerange[0]), 2, cv::Scalar(0,255,255,255), -1 );
+    
+    cv::circle( cluster.m_cvimg_debug, cv::Point(max_imgcoords[1],timerange[1]), 2, cv::Scalar(0,255,255,255), -1 );
+    cv::circle( cluster.m_cvimg_debug, cv::Point(max_imgcoords[2],timerange[1]), 2, cv::Scalar(0,255,255,255), -1 );
+    cv::circle( cluster.m_cvimg_debug, cv::Point(max_imgcoords[3],timerange[1]), 2, cv::Scalar(0,255,255,255), -1 );
+    // -------------------------------------------------------------------------------------------------------------
+
+    // astar config ---------------------------
+    larlitecv::AStar3DAlgoConfig astar_cfg;
+    astar_cfg.verbosity = 0;
+    astar_cfg.min_nplanes_w_hitpixel = 2;
+    astar_cfg.min_nplanes_w_charge = 2;
+    astar_cfg.astar_threshold.resize(3,10);
+    astar_cfg.astar_neighborhood.resize(3,4);
+    astar_cfg.restrict_path = true;
+    astar_cfg.path_restriction_radius = 30.0;
+    astar_cfg.accept_badch_nodes = true;
+    astar_cfg.astar_start_padding = 3;
+    astar_cfg.astar_end_padding = 3;
+    astar_cfg.lattice_padding = 3;
+    // ----------------------------------------
+    
     // now we enter the buiding loop
     int nloopsteps = 1;
     int iloop = 0;
     while( iloop<nloopsteps ) {
+      std::cout << "////// LOOP " << iloop << " /////////" << std::endl;
+      std::cout << " Start: (" << min_pos3d[0] << "," << min_pos3d[1] << "," << min_pos3d[2] << ") " << std::endl;
+      std::cout << " End:   (" << max_pos3d[0] << "," << max_pos3d[1] << "," << max_pos3d[2] << ")   " << std::endl;      
       iloop++;
       
-      // first get the overlapping time region
-      std::vector<int> timerange = cluster.getOverlappingRowRange();
-      timerange[0]++;
-      timerange[1]--;
-      std::cout << "Time range: [" << timerange[0] << "," << timerange[1] << "]" << std::endl;
       
-      // draw line
-      cv::line( cluster.m_cvimg_debug, cv::Point(0,timerange[0]), cv::Point(3455,timerange[0]), cv::Scalar(255,255,255), 1 );
-      cv::line( cluster.m_cvimg_debug, cv::Point(0,timerange[1]), cv::Point(3455,timerange[1]), cv::Scalar(255,255,255), 1 );      
-
-      // we scan at the time range for a good 3D point (or points?)
-      std::vector<int> min_imgcoords;
-      std::vector<float> min_pos3d;
-      std::vector<int> max_imgcoords;
-      std::vector<float> max_pos3d;
-      cluster.getCluster3DPointAtTimeTick( timerange[0], img_v, badch_v, true, min_imgcoords, min_pos3d );
-      cluster.getCluster3DPointAtTimeTick( timerange[1], img_v, badch_v, true, max_imgcoords, max_pos3d );
-
-      cv::circle( cluster.m_cvimg_debug, cv::Point(min_imgcoords[1],timerange[0]), 2, cv::Scalar(0,255,255,255), -1 );
-      cv::circle( cluster.m_cvimg_debug, cv::Point(min_imgcoords[2],timerange[0]), 2, cv::Scalar(0,255,255,255), -1 );
-      cv::circle( cluster.m_cvimg_debug, cv::Point(min_imgcoords[3],timerange[0]), 2, cv::Scalar(0,255,255,255), -1 );
-
-      cv::circle( cluster.m_cvimg_debug, cv::Point(max_imgcoords[1],timerange[1]), 2, cv::Scalar(0,255,255,255), -1 );
-      cv::circle( cluster.m_cvimg_debug, cv::Point(max_imgcoords[2],timerange[1]), 2, cv::Scalar(0,255,255,255), -1 );
-      cv::circle( cluster.m_cvimg_debug, cv::Point(max_imgcoords[3],timerange[1]), 2, cv::Scalar(0,255,255,255), -1 );
-      
-      // use astar between these points!
-      larlitecv::AStar3DAlgoConfig astar_cfg;
-      astar_cfg.verbosity = 1;      
-      astar_cfg.min_nplanes_w_hitpixel = 2;
-      astar_cfg.min_nplanes_w_charge = 2;
-      astar_cfg.astar_threshold.resize(3,5);
-      astar_cfg.astar_neighborhood.resize(3,3);
-      astar_cfg.restrict_path = true;
-      astar_cfg.path_restriction_radius = 10.0;
-      astar_cfg.accept_badch_nodes = true;
-      astar_cfg.astar_start_padding = 3;
-      astar_cfg.astar_end_padding = 3;
-      astar_cfg.lattice_padding = 3;
-
       const larcv::ImageMeta& meta = img_v.front().meta();
       larlitecv::AStar3DAlgo algo( astar_cfg );
       std::vector<larlitecv::AStar3DNode> path;
@@ -310,6 +328,8 @@ namespace larlitecv {
 	start_cols.push_back( min_imgcoords[i+1] );
 	end_cols.push_back(   max_imgcoords[i+1] );
       }
+      timerange[0] = min_imgcoords[0]; // row
+      timerange[1] = max_imgcoords[0]; // row
       int goalhit = 0;
       path = algo.findpath( img_v, badch_v, badch_v, timerange[0], timerange[1], start_cols, end_cols, goalhit );
       
@@ -335,10 +355,24 @@ namespace larlitecv {
 	v3d.push_back( v3 );
       }
 
-      extendClusterUsingAStarPath( cluster, v3d, img_v, 10.0, 10.0, 1.0 );
+      std::vector< std::set<int> > plane_overlapping_clusters = extendClusterUsingAStarPath( cluster, v3d, img_v, plane_contours_v, 10.0, 10.0, 1.0 );
+      fillInClusterImage( cluster, v3d, img_v, badch_v, plane_overlapping_clusters, plane_contours_v, 0.3, 10.0, 2 );
+
+      // we reset the start and end points
+      min_imgcoords = larcv::UBWireTool::getProjectedImagePixel( v3d.front(), meta, img_v.size() );
+      max_imgcoords = larcv::UBWireTool::getProjectedImagePixel( v3d.back(),  meta, img_v.size() );
+
+      // go to ticks
+      min_imgcoords[0] = v3d.front()[0]/cm_per_tick + 3200.0;
+      max_imgcoords[0] = v3d.back()[0]/cm_per_tick  + 3200.0;
+
+      // got to rows
+      min_imgcoords[0] = meta.row( min_imgcoords[0] );
+      max_imgcoords[0] = meta.row( max_imgcoords[0] );
+
+      min_pos3d = v3d.front();
+      max_pos3d = v3d.back();
       
-      // absorb clusters
-      break;
     }
     
     return cluster;
@@ -364,6 +398,7 @@ namespace larlitecv {
     std::cout << __FILE__ << ":" << __LINE__ << " Seed Point: "
 	      << " pos=" << pos3d[0] << "," << pos3d[1] << "," << pos3d[2]
 	      << "  imgcoords=(" << imgcoords[0] << "," << imgcoords[1] << "," << imgcoords[2] << "," << imgcoords[3] << ")"
+	      << "  tick=" << img_v.front().meta().pos_y( imgcoords[0] )
 	      << std::endl;
     
     
@@ -433,13 +468,23 @@ namespace larlitecv {
     return cluster;
   }
 
-  void ContourAStarClusterAlgo::extendClusterUsingAStarPath( ContourAStarCluster& cluster, const std::vector< std::vector<float> >& path3d,
-							     const std::vector<larcv::Image2D>& img_v,
-							     const float distfromend, const float distextended, const float stepsize ) {
-
+  std::vector< std::set<int> >  ContourAStarClusterAlgo::extendClusterUsingAStarPath( ContourAStarCluster& cluster, std::vector< std::vector<float> >& path3d,
+										      const std::vector<larcv::Image2D>& img_v, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+										      const float distfromend, const float distextended, const float stepsize ) {
+    // extend cluster using astar path to get direction of track
+    // (1) get points on the end of the track
+    // (2) fit line to points using opencv
+    // (3) extend from ends and record clusters it intersects
+    // return this list of clusters
+    // // (4) also, make cluster image if (a) inside cluster and has charge (b) 2-plane has charge, 1-plane is dead
+    // // (5) update the core cluster using the cluster image (contour it)
+    // // (6) update the min/max range
+    // //      -- first 
+    
     const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
     const larcv::ImageMeta& meta = img_v.front().meta();
-    
+
+    // (1) get points on the end of the track
     // make a Point array list for opencv
     // we gather points some distance from the ends
     std::vector< cv::Point3f > point3d_start;
@@ -472,8 +517,8 @@ namespace larlitecv {
       }
     }//end of path loop
     
-
-    // fit line using opencv function
+    
+    // (2) fit line using opencv function
     std::vector<float> startline; // 6 parameters (vx, vy, vz, x0, y0, z0 )
     cv::fitLine( point3d_start, startline, CV_DIST_L2, 0.0, 0.01, 0.01 );
     std::vector<float> endline; // 6 parameters (vx, vy, vz, x0, y0, z0 )
@@ -507,11 +552,13 @@ namespace larlitecv {
 	endline[i] *= -1.0;
     }
 
-    // walk along the line
-    //  check which clusters are touched by it
+    // (3) extend from ends and record clsuters it intersects/(4) mark the cluster image
     int numsteps = distextended/stepsize;
     std::cout << "extend line with " << numsteps << " steps" << std::endl;
 
+    std::vector< std::set<int> > indices_of_contours_v(3); // index of contours the extensions cross into
+    std::vector< std::vector<float> > start_ext;
+    std::vector< std::vector<float> > end_ext;    
     for (int isteps=1; isteps<=numsteps; isteps++ ) {
 
       std::vector<float> stepposmax(3);
@@ -529,6 +576,23 @@ namespace larlitecv {
 	// project back into the image
 	std::vector<int> imgcoordsmax = larcv::UBWireTool::getProjectedImagePixel( stepposmax, meta, img_v.size() );
 	imgcoordsmax[0] = meta.row( stepposmax[0] );
+
+	// start point check
+	for (int p=0; p<3; p++) {
+	  for (int ictr=0; ictr<(int)plane_contours_v[p].size(); ictr++) {
+	    const ContourShapeMeta& ctr = plane_contours_v[p][ictr];
+	    cv::Point testpt( imgcoordsmax[p+1], imgcoordsmax[0] );
+	    double dist = cv::pointPolygonTest( ctr, testpt, false );
+	    if ( dist>0 ) {
+	      indices_of_contours_v[p].insert(ictr);
+	      std::vector<float> pt = stepposmax;
+	      pt[0] = (pt[0]-3200.0)*cm_per_tick;
+	      end_ext.push_back( pt );
+	    }
+	  }
+	}
+	
+	// draw for fun
 	for (int p=0; p<3; p++) {
 	  cv::circle( cluster.m_cvimg_debug, cv::Point( imgcoordsmax[p+1], imgcoordsmax[0] ), 1, cv::Scalar(0,255,0), -1 );
 	}
@@ -536,9 +600,28 @@ namespace larlitecv {
       else {
 	std::cout << " stepmax out of bounds: (" << stepposmax[0] << "," << stepposmax[1] << "," << stepposmax[2] << ")" << std::endl;
       }
-      if ( stepposmin[0]>2400 && stepposmin[0]<8448 && stepposmin[1]>-117 && stepposmin[1]<117 && stepposmin[2]>0.3 && stepposmin[2]<1030 ) {	
+      
+      if ( stepposmin[0]>2400 && stepposmin[0]<8448 && stepposmin[1]>-117 && stepposmin[1]<117 && stepposmin[2]>0.3 && stepposmin[2]<1030 ) {
+	// project back into the image	
 	std::vector<int> imgcoordsmin = larcv::UBWireTool::getProjectedImagePixel( stepposmin, meta, img_v.size() );
 	imgcoordsmin[0] = meta.row( stepposmin[0] );
+
+	// start point check
+	for (int p=0; p<3; p++) {
+	  for (int ictr=0; ictr<(int)plane_contours_v[p].size(); ictr++) {
+	    const ContourShapeMeta& ctr = plane_contours_v[p][ictr];
+	    cv::Point testpt( imgcoordsmin[p+1], imgcoordsmin[0] );
+	    double dist = cv::pointPolygonTest( ctr, testpt, false );
+	    if ( dist>0 ) {
+	      indices_of_contours_v[p].insert(ictr);
+	      std::vector<float> pt = stepposmin;
+	      pt[0] = (pt[0]-3200.0)*cm_per_tick;
+	      start_ext.push_back( pt );	      
+	    }
+	  }
+	}
+
+	// draw for fun
 	for (int p=0; p<3; p++) {
 	  cv::circle( cluster.m_cvimg_debug, cv::Point( imgcoordsmin[p+1], imgcoordsmin[0] ), 1, cv::Scalar(0,255,0), -1 );
 	}
@@ -548,10 +631,134 @@ namespace larlitecv {
       }
       
     }//end of step loop
-      
 
-    return;
+    std::cout << "Cluster intersections: " << std::endl;
+    for (int p=0; p<3; p++) {
+      std::cout << " Plane " << p << ": ";
+      for (auto& idx : indices_of_contours_v[p] )
+	std::cout << " " << idx;
+      std::cout << std::endl;
+    }
+
+    // extend path
+    std::vector< std::vector<float> > extendedpath;
+    for (int idx=(int)start_ext.size()-1; idx>=0; idx--) {
+      extendedpath.push_back( start_ext[idx] );
+    }
+    for (int idx=0; idx<(int)path3d.size(); idx++)
+      extendedpath.push_back( path3d[idx] );
+    for (int idx=0; idx<(int)end_ext.size(); idx++)
+      extendedpath.push_back( end_ext[idx] );
+
+    std::swap( path3d, extendedpath );
+
+    return indices_of_contours_v;
   }//end of function
 
-  
+
+  void ContourAStarClusterAlgo::fillInClusterImage( ContourAStarCluster& cluster, const std::vector< std::vector<float> >& path3d,
+						    const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v,
+						    const std::vector< std::set<int> >& cluster_indices, const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+						    const float maxstepsize, const float tag_qthreshold, const int neighborhood ) {
+    // we use the astar path, the clusters it intersects (specified by cluster_indices) to fill in the cluster's CV image
+    // we'll use draw contours and fill in points along path in dead region
+    int nplanes = (int)cluster_indices.size();
+    const larcv::ImageMeta& meta = img_v.front().meta();
+    const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
+    
+    // fill in the contours
+    for (int p=0; p<nplanes; p++) {
+      std::vector< std::vector<cv::Point> > contour_list;      
+      for ( auto& idx : cluster_indices[p] )
+	contour_list.push_back( plane_contours_v[p][idx] );
+      for (int ictr=0; ictr<(int)contour_list.size(); ictr++)
+	cv::drawContours( cluster.m_cvimg_v[p], contour_list, ictr, cv::Scalar(255,0,0), CV_FILLED );	
+    }
+
+    // fill in the path
+    int nnodes = (int)path3d.size();
+    for (int inode=0; inode<nnodes-1; inode++) {
+      auto const& start = path3d[inode];
+      auto const& end   = path3d[inode+1];
+      float dir[3];
+      float norm = 0;
+      for (int i=0; i<3; i++) {
+	dir[i] = end[i]-start[i];
+	norm += dir[i]*dir[i];
+      }
+      norm = sqrt(norm);
+      for (int i=0; i<3; i++) {
+	dir[i] /= norm;
+      }
+      int nsteps = norm/maxstepsize;
+      if ( fabs(maxstepsize*nsteps-norm)>1.0e-2 ) {
+	nsteps++;
+      }
+      float step = norm/float(nsteps);
+      for (int istep=1; istep<=nsteps; istep++) {
+	std::vector<float> pos(3);
+	for (int i=0; i<3; i++)
+	  pos[i] = start[i] + istep*step*dir[i];
+	std::vector<int> imgcoords = larcv::UBWireTool::getProjectedImagePixel( pos, meta, img_v.size() );
+	// change imgcoords to ticks
+	imgcoords[0] = pos[0]/cm_per_tick + 3200.0;
+	// tick to row
+	imgcoords[0] = meta.row( imgcoords[0] );
+	// go into image
+	int nplanes_w_charge          = 0;
+	int nplanes_w_charge_or_badch = 0;
+	for (int p=0; p<3; p++) {
+	  bool foundq = false;
+	  bool foundbad = false;
+	  for (int dr=-neighborhood; dr<=neighborhood; dr++) {
+	    int row = imgcoords[0]+dr;
+	    if ( row<0 || row>=(int)meta.rows() )
+	      continue;
+	    for (int dc=-neighborhood; dc<=neighborhood; dc++) {
+	      int col = imgcoords[p+1]+dc;
+	      if ( col<0 || col>=(int)meta.cols() )
+		continue;
+	      if ( img_v[p].pixel( row, col )>tag_qthreshold ) {
+		foundq = true;
+		break;
+	      }
+	      if ( badch_v[p].pixel(row,col)>0 ) {
+		foundbad = true;
+	      }
+	    }// end of col loop
+	    if ( foundq )
+	      break;
+	  }//end of row loop
+
+	  if ( foundq )
+	    nplanes_w_charge++;
+	  if ( foundq || foundbad)
+	    nplanes_w_charge_or_badch++;
+	}//end of plane loop
+	
+	if ( nplanes_w_charge>=2 && nplanes_w_charge_or_badch==nplanes ) {
+	  // good point
+	  // we fill dead channel regions and parts with charge
+	  for (int p=0; p<nplanes; p++) {
+	    for (int dr=-neighborhood; dr<=neighborhood; dr++) {
+	      int row = imgcoords[0]+dr;
+	      if ( row<0 || row>=(int)meta.rows() )
+		continue;
+	      for (int dc=-neighborhood; dc<=neighborhood; dc++) {
+		int col = imgcoords[p+1]+dc;
+		if ( col<0 || col>=(int)meta.cols() )
+		  continue;
+		if ( img_v[p].pixel( row, col )>tag_qthreshold || (badch_v[p].pixel(row,col)>0 && abs(dr)<=1 && abs(dc)<=1) ) {
+		  cluster.m_cvpath_v[p].at<uchar>( cv::Point(col,row) ) = 255;
+		  cluster.m_cvimg_v[p].at<uchar>( cv::Point(col,row) ) = 255;		  
+		  for (int i=0; i<3; i++) 
+		    cluster.m_cvimg_debug.at<cv::Vec3b>(cv::Point(col,row))[i] = 255;
+		}
+	      }//end of col loop
+	    }//end of row loop
+	  }//en dof plane loop
+	}//end of if point is good
+      }//end of step loop
+    }//end of node loop
+  }//end of function
 }
