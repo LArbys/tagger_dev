@@ -3,6 +3,10 @@
 #include <sstream>
 #include <stdexcept>
 
+// larlite
+#include "LArUtil/LArProperties.h"
+#include "LArUtil/Geometry.h"
+
 #include "UBWireTool/UBWireTool.h"
 
 #include "CVUtil/CVUtil.h"
@@ -14,6 +18,8 @@
 // LArOpenCV
 #include "LArOpenCV/ImageCluster/AlgoClass/DefectBreaker.h"
 #include "LArOpenCV/ImageCluster/AlgoData/TrackClusterCompound.h"
+
+
 
 namespace larlitecv {
 
@@ -246,6 +252,7 @@ namespace larlitecv {
 							    const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
 							    const float max_dist2cluster ) {
 
+    const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
     ContourAStarCluster cluster = makeSeedClustersFrom3DPoint( pos3d, img_v, plane_contours_v, max_dist2cluster );
 
     // now we enter the buiding loop
@@ -318,11 +325,22 @@ namespace larlitecv {
       // evaluate track.
       
       // if good, extend track
+      // we do this by getting a 3d fit of the line, extending past the end points, absorbing new clusters on all three planes
+      std::vector< std::vector<float> > v3d;
+      for (int idx=0; idx<(int)path.size(); idx++) {
+	auto &node = path[idx];
+	std::vector<float> v3 = node.tyz;
+	// convert tick to x
+	v3[0] = (v3[0]-3200.0)*cm_per_tick;
+	v3d.push_back( v3 );
+      }
 
+      extendClusterUsingAStarPath( cluster, v3d, img_v, 10.0, 10.0, 1.0 );
+      
       // absorb clusters
       break;
     }
-
+    
     return cluster;
   }
   
@@ -414,6 +432,126 @@ namespace larlitecv {
     std::cout << "row range: [" << rowrange[0] << "," << rowrange[1] << "]" << std::endl;
     return cluster;
   }
+
+  void ContourAStarClusterAlgo::extendClusterUsingAStarPath( ContourAStarCluster& cluster, const std::vector< std::vector<float> >& path3d,
+							     const std::vector<larcv::Image2D>& img_v,
+							     const float distfromend, const float distextended, const float stepsize ) {
+
+    const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
+    const larcv::ImageMeta& meta = img_v.front().meta();
+    
+    // make a Point array list for opencv
+    // we gather points some distance from the ends
+    std::vector< cv::Point3f > point3d_start;
+    std::vector< cv::Point3f > point3d_end;    
+
+    const std::vector<float>& start = path3d.front();
+    const std::vector<float>& end   = path3d.back();
+
+    std::cout << "extend path w/ size=" << path3d.size() << std::endl;
+    
+    for (int idx=0; idx<(int)path3d.size(); idx++) {
+      const std::vector<float>& v3 = path3d[idx];
+
+      float dist_start = 0;
+      float dist_end   = 0;
+      for (int i=0; i<3; i++) {
+	dist_start += (start[i]-v3[i])*(start[i]-v3[i]);
+	dist_end   += (end[i]-v3[i])*(end[i]-v3[i]);
+      }
+      dist_start = sqrt(dist_start);
+      dist_end   = sqrt(dist_end);
+
+      cv::Point3f pt( v3[0], v3[1], v3[2] );
+      std::cout << "path [" << idx << "] start_dist=" << dist_start << " end_dist=" << dist_end << std::endl;
+      if ( dist_start<distfromend ) {
+	point3d_start.push_back( pt );
+      }
+      if ( dist_end<distfromend ) {
+	point3d_end.push_back( pt );
+      }
+    }//end of path loop
+    
+
+    // fit line using opencv function
+    std::vector<float> startline; // 6 parameters (vx, vy, vz, x0, y0, z0 )
+    cv::fitLine( point3d_start, startline, CV_DIST_L2, 0.0, 0.01, 0.01 );
+    std::vector<float> endline; // 6 parameters (vx, vy, vz, x0, y0, z0 )
+    cv::fitLine( point3d_end, endline, CV_DIST_L2, 0.0, 0.01, 0.01 );
+
+    // get direction from start to end to help us orient the lines
+    std::vector<float> cluster_dir(3); // min -> max
+    float cluster_dir_norm = 0.;
+    for (int i=0; i<3; i++) {
+      cluster_dir[i] = end[i] - start[i];
+      cluster_dir_norm += cluster_dir[i]*cluster_dir[i];
+    }
+    cluster_dir_norm = sqrt(cluster_dir_norm);
+    for (int i=0; i<3; i++)
+      cluster_dir[i] /= cluster_dir_norm;
+
+    float cosstart = 0;
+    float cosend   = 0;
+    for (int i=0; i<3; i++) {
+      cosstart += cluster_dir[i]*startline[i];
+      cosend   += cluster_dir[i]*endline[i];
+    }
+
+    // start should be negative, end should be positive
+    if ( cosstart>0 ) {
+      for (int i=0; i<3; i++)
+	startline[i] *= -1.0;
+    }
+    if ( cosend<0 ) {
+      for (int i=0; i<3; i++)
+	endline[i] *= -1.0;
+    }
+
+    // walk along the line
+    //  check which clusters are touched by it
+    int numsteps = distextended/stepsize;
+    std::cout << "extend line with " << numsteps << " steps" << std::endl;
+
+    for (int isteps=1; isteps<=numsteps; isteps++ ) {
+
+      std::vector<float> stepposmax(3);
+      std::vector<float> stepposmin(3);
+      for (int i=0; i<3; i++) {
+	stepposmax[i] = float(isteps)*stepsize*endline[i]   + end[i];
+	stepposmin[i] = float(isteps)*stepsize*startline[i] + start[i];
+      }
+      
+      // x to tick
+      stepposmax[0] = stepposmax[0]/cm_per_tick + 3200.0;
+      stepposmin[0] = stepposmin[0]/cm_per_tick + 3200.0;
+      
+      if ( stepposmax[0]>2400 && stepposmax[0]<8448 && stepposmax[1]>-117 && stepposmax[1]<117 && stepposmax[2]>0.3 && stepposmax[2]<1030 ) {
+	// project back into the image
+	std::vector<int> imgcoordsmax = larcv::UBWireTool::getProjectedImagePixel( stepposmax, meta, img_v.size() );
+	imgcoordsmax[0] = meta.row( stepposmax[0] );
+	for (int p=0; p<3; p++) {
+	  cv::circle( cluster.m_cvimg_debug, cv::Point( imgcoordsmax[p+1], imgcoordsmax[0] ), 1, cv::Scalar(0,255,0), -1 );
+	}
+      }
+      else {
+	std::cout << " stepmax out of bounds: (" << stepposmax[0] << "," << stepposmax[1] << "," << stepposmax[2] << ")" << std::endl;
+      }
+      if ( stepposmin[0]>2400 && stepposmin[0]<8448 && stepposmin[1]>-117 && stepposmin[1]<117 && stepposmin[2]>0.3 && stepposmin[2]<1030 ) {	
+	std::vector<int> imgcoordsmin = larcv::UBWireTool::getProjectedImagePixel( stepposmin, meta, img_v.size() );
+	imgcoordsmin[0] = meta.row( stepposmin[0] );
+	for (int p=0; p<3; p++) {
+	  cv::circle( cluster.m_cvimg_debug, cv::Point( imgcoordsmin[p+1], imgcoordsmin[0] ), 1, cv::Scalar(0,255,0), -1 );
+	}
+      }
+      else {
+	std::cout << " stepmin out of bounds: (" << stepposmin[0] << "," << stepposmin[1] << "," << stepposmin[2] << ")" << std::endl;
+      }
+      
+    }//end of step loop
+      
+
+    return;
+  }//end of function
 
   
 }

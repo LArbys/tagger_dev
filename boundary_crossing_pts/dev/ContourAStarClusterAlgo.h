@@ -74,6 +74,11 @@ namespace larlitecv {
 				     const std::vector<larcv::Image2D>& badch_v,
 				     const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
 				     const float max_dist2cluster );
+
+    void extendClusterUsingAStarPath( ContourAStarCluster& cluster, const std::vector< std::vector<float> >& path3d,
+				      const std::vector<larcv::Image2D>& img_v,
+				      const float distfromend, const float distextended, const float stepsize );
+    
     
     
   };
