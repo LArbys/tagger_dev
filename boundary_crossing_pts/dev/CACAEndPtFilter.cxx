@@ -6,6 +6,10 @@
 // larlite
 #include "LArUtil/LArProperties.h"
 
+// larcv
+#include "CVUtil/CVUtil.h"
+#include "UBWireTool/UBWireTool.h"
+
 // larlitecv
 #include "TaggerTypes/dwall.h"
 
@@ -19,15 +23,14 @@ namespace larlitecv {
 					const int endpt_type, const float dist_from_wall, const float chi2_threshold, const float max_dtick ) {
 
     // evaluates end point goodness
-    
-    clearClusters();
-    
     std::cout << __FILE__ << ":" << __LINE__ << " ----------------------------------" << std::endl;
     
     const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;    
     larlitecv::ContourAStarCluster cluster = m_caca.makeCluster( pt.pos(), img_v, badch_v, plane_contours_v, -10, 3 );
-    if ( cluster.m_path3d.size()==0 )
+    if ( cluster.m_path3d.size()==0 ) {
+      m_last_clusters.emplace_back( std::move(cluster) );      
       return false;
+    }
     
     const std::vector<float>& start = cluster.m_path3d.front();
     const std::vector<float>& end   = cluster.m_path3d.back();
@@ -139,7 +142,7 @@ namespace larlitecv {
     return false;
   }
 
-  void CACAEndPtFilter::evaluateEndPoints( const std::vector< const std::vector<larlitecv::BoundarySpacePoint>* >& sp_v, const std::vector< const larlite::event_opflash* >& flash_v,
+  void CACAEndPtFilter::evaluateEndPoints( const std::vector< const std::vector<larlitecv::BoundarySpacePoint>* >& sp_v, const std::vector< larlite::event_opflash* >& flash_v,
 					   const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v,
 					   const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
 					   const float dist_from_wall, const float chi2_threshold, const float max_dtick,
@@ -184,7 +187,30 @@ namespace larlitecv {
       std::cout << "==========================================================================" << std::endl;
       std::cout << "CACAENDPTFILTER: evaluate points" << std::endl;
     }
+    
+    if ( fMakeDebugImage ) {
+      m_cvimg_rgbdebug.clear();
+      // we create 2 RGB image. We will use this to mark endpoints provided to the filter.
+      // (1) reco points which are close to true crossing points
+      // (2) reco points which are not close to true crossing points. if no MC, this one not filled.
+      const larcv::ImageMeta& meta = img_v.front().meta();
+      cv::Mat rgbdebug( meta.rows(), meta.cols(), CV_8UC3 );
+      cv::Mat rgbdebug2( meta.rows(), meta.cols(), CV_8UC3 );      
+      for (int p=0; p<3; p++) {
+	auto const& img = img_v[p];
+	cv::Mat cvimg = larcv::as_gray_mat( img, 0.0, 50.0, 0.2 );
+	for (int r=0; r<meta.rows(); r++) {
+	  for (int c=0; c<meta.cols(); c++) {
+	    rgbdebug.at<cv::Vec3b>( cv::Point(c,r) )[p] = cvimg.at<unsigned char>(cv::Point(c,r) );
+	    rgbdebug2.at<cv::Vec3b>( cv::Point(c,r) )[p] = cvimg.at<unsigned char>(cv::Point(c,r) );	    
+	  }
+	}
+      }
 
+      m_cvimg_rgbdebug.emplace_back( std::move(rgbdebug) );
+      m_cvimg_rgbdebug.emplace_back( std::move(rgbdebug2) );      
+    }
+    
     passes_filter.clear();
     
     for ( auto const& p_sp_v : sp_v ) {
@@ -195,8 +221,10 @@ namespace larlitecv {
 	ireco++; // counter for all spacepoint indices
 	isp++;   // counter for sp index of this vector
 
-	if ( sp.type()==larlitecv::kAnode || sp.type()==larlitecv::kCathode ) {
+	if ( sp.type()==larlitecv::kTop || sp.type()==larlitecv::kAnode || sp.type()==larlitecv::kCathode ) {
 
+	  clearClusters();
+	  
 	  int tot_flashidx = sp.getFlashIndex();
 	  int loc_flashidx = tot_flashidx;
 	  if ( m_verbosity>1 ) {
@@ -206,24 +234,29 @@ namespace larlitecv {
 	  }
 	  
 	  const larlite::opflash* popflash = NULL;
-	  for ( int ievop=0; ievop<(int)flash_v.size(); ievop++ ) {
-	    if ( loc_flashidx >= flash_v.at(ievop)->size() )
-	      loc_flashidx -= (int)flash_v.at(ievop)->size();
-	    else
-	      popflash = &(flash_v.at(ievop)->at(loc_flashidx));
-	  }
+	  if ( sp.type()==larlitecv::kAnode || sp.type()==larlitecv::kCathode ) {
+	    for ( int ievop=0; ievop<(int)flash_v.size(); ievop++ ) {
+	      if ( loc_flashidx >= flash_v.at(ievop)->size() )
+		loc_flashidx -= (int)flash_v.at(ievop)->size();
+	      else
+		popflash = &(flash_v.at(ievop)->at(loc_flashidx));
+	    }
 
-	  if ( m_verbosity>1 ) {
-	    std::cout << "  flash local index: " << loc_flashidx << std::endl;		
-	    std::cout << "  flash pointer: " << popflash << std::endl;
+	    if ( m_verbosity>1 ) {
+	      std::cout << "  flash local index: " << loc_flashidx << std::endl;		
+	      std::cout << "  flash pointer: " << popflash << std::endl;
+	    }
 	  }
 	  bool passes = isEndPointGood( sp, popflash, img_v, badch_v, plane_contours_v, sp.type(), dist_from_wall, chi2_threshold, max_dtick );
+
 	  if ( m_verbosity>0 ) {
 	    std::cout << "Result: " << passes << std::endl;
 	  }
 
+	  
 	  const larlitecv::RecoCrossingPointAna_t* recoinfo   = NULL;
 	  const larlitecv::TruthCrossingPointAna_t* truthinfo = NULL;
+	  bool truthmatched = false;
 	  
 	  if ( fTruthInfoLoaded ) {
 
@@ -238,7 +271,7 @@ namespace larlitecv {
 	      std::cout << "Has Truth Match: " << recoinfo->truthmatch << std::endl;	    
 	    
 	    if ( recoinfo->truthmatch==1 ) {
-	    
+	      truthmatched = true;
 	      const larlitecv::TruthCrossingPointAna_t* truthinfo = NULL;
 	      try {
 		truthinfo = &(m_truthinfo_ptr_v->at(recoinfo->truthmatch_index));
@@ -256,23 +289,64 @@ namespace larlitecv {
 	      // good reco point
 	      if ( passes ) {
 		passes_v[isp] = 1;	  
-		good_npasses_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
+		good_npasses_caca[(int)sp.type()]++;
 	      }
 	      else {
-		good_nfails_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
+		good_nfails_caca[(int)sp.type()]++;
 	      }
 	    }//end if reco is truth matched
 	    else {
 	      // bad reco point
 	      if ( passes ) {
 		passes_v[isp] = 1;	  
-		bad_npasses_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
+		bad_npasses_caca[(int)sp.type()]++;
 	      }
 	      else
-		bad_nfails_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
-	    }//end of if non-matched reco point
+		bad_nfails_caca[(int)sp.type()]++;
+	    }//end of if non-matched reco point	    
 	  }// if truth loaded
-	}//if anode/cathode
+
+
+	  if ( fMakeDebugImage ) {
+	    // we draw the cluster and end point
+	    
+	    // contours
+	    larlitecv::ContourAStarCluster& astar_cluster = getLastCluster();
+	    
+	    // end point
+	    std::vector<int> sp_imgcoords = larcv::UBWireTool::getProjectedImagePixel( sp.pos(), img_v.front().meta(), 3 );
+
+	    int img_index = 0;
+	    if ( fTruthInfoLoaded ) {
+	      if ( truthmatched )
+		img_index = 0;
+	      else
+		img_index = 1;
+	    }
+	    else {
+	      img_index = 0;
+	    }
+	    
+	    for ( int p=0; p<astar_cluster.m_current_contours.size(); p++) {
+	      // first copy into contour container	      
+	      std::vector< std::vector<cv::Point> > contour_v;	    	      
+	      auto const& contour_shpmeta_v = astar_cluster.m_current_contours[p];
+	      // now draw contours
+	      for ( auto const& ctr : contour_shpmeta_v ) {
+		if ( ctr.size()>0 )
+		  contour_v.push_back( ctr );
+	      }
+	      for (int i=0; i<(int)contour_v.size(); i++)
+		cv::drawContours( m_cvimg_rgbdebug[img_index], contour_v, i, cv::Scalar(150,150,150), 1 );
+	      // draw end point
+	      cv::Scalar ptcolor(0,255,255,255);
+	      if ( passes )
+		ptcolor = cv::Scalar(255,0,255,255);
+	      cv::circle( m_cvimg_rgbdebug[img_index], cv::Point( sp_imgcoords[p+1], sp_imgcoords[0] ), 3, ptcolor, 1 );
+	    }// end of plane loop
+	  }//end of if debug image
+	  
+	}//if correct type
       }//end of space points loop
       
       passes_filter.emplace_back( std::move(passes_v) );

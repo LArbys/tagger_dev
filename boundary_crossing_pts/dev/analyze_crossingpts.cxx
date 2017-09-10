@@ -69,6 +69,7 @@
 #include "BMTContourFilterAlgo.h"
 #include "ContourClusterAlgo.h"
 #include "ContourAStarClusterAlgo.h"
+#include "CACAEndPtFilter.h"
 
 int main( int nargs, char** argv ) {
   
@@ -524,6 +525,10 @@ int main( int nargs, char** argv ) {
     std::cout << "  Anode: "      << anode_spacepoint_v.size() << std::endl;
     std::cout << "  Cathode: "    << cathode_spacepoint_v.size() << std::endl;
     std::cout << "  Image Ends: " << imgends_spacepoint_v.size() << std::endl;
+    std::cout << "  Anode end points" << std::endl;    
+    for (int i=0; i<(int)anode_spacepoint_v.size(); i++) {
+      std::cout << "    [" << i << "] flashidx=" << anode_spacepoint_v.at(i).getFlashIndex() << std::endl;
+    }
     
     // we collect pointers to all the end points
     std::vector< const larlitecv::BoundarySpacePoint* > all_endpoints;
@@ -587,7 +592,7 @@ int main( int nargs, char** argv ) {
     // BMTCV
     bmtcv_algo.analyzeImages( imgs_v, badch_v, 10.0, 2 );
 
-    // RECO DEV: Contour-based Filter
+    // RECO DEV: Contour-based Filters
     
     // Pass Truth End points through the filter    
     larlitecv::BMTContourFilterAlgo contour_truthfilter_algo;
@@ -723,28 +728,133 @@ int main( int nargs, char** argv ) {
     std::cout << "    imgends: " << numreco_bad[6][0] << "/" << numreco_bad[6][1] << std::endl;                
     std::cout << "--------------------------------------------------- " << std::endl;
     
-    // ========================================================================================
+    // ===============================================================================================================
     //  DEV: ContourAStarCluster
 
-    std::cout << "===================================================" << std::endl;
-    std::cout << "===================================================" << std::endl;
+    std::cout << "================================================================" << std::endl;
+    std::cout << "================================================================" << std::endl;
     std::cout << " DEV: ContourAStarCluster" << std::endl;
-    
-    larlitecv::ContourAStarClusterAlgo astarcontour_algo;
-    // find a good point to seed
-    const larlitecv::BoundarySpacePoint& astar_test_pt = contourpassing_spacepoints_v[28];
-    larlitecv::ContourAStarCluster astar_cluster       = astarcontour_algo.makeCluster( astar_test_pt.pos(), imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, -10 );
 
-    //for (int p=0; p<(int)astar_cluster.m_cvimg_v.size(); p++) {
+    std::vector< std::vector<int> > caca_results;
+    larlitecv::CACAEndPtFilter cacaalgo;
+    cacaalgo.setVerbosity(2);
+    cacaalgo.setTruthInformation( xingptdata_prefilter.truthcrossingptinfo_v, xingptdata_prefilter.recocrossingptinfo_v );
+    cacaalgo.makeDebugImage();
+    cacaalgo.evaluateEndPoints( prefilter_spacepoints_v, event_opflash_v, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, 17.0, 20.0, 150.0, caca_results );
+    
+    // std::vector<int> passes_caca( all_endpoints.size(), 0 );
+    // int good_npasses_caca[2] = {0,0}; // [anode,cathode]
+    // int good_nfails_caca[2]  = {0,0}; // [anode,cathode]
+    // int bad_npasses_caca[2] = {0,0}; // [anode,cathode]
+    // int bad_nfails_caca[2]  = {0,0}; // [anode,cathode]
+
+    // ireco = -1;
+    // bool stop = false;
+    // for ( auto const& p_sp_v : prefilter_spacepoints_v ) {
+    //   for (auto const& sp : *p_sp_v ) {
+    // 	ireco++;
+    // 	// if ( ireco!=47 )
+    // 	//   continue;
+	
+    // 	larlitecv::RecoCrossingPointAna_t& recoinfo = xingptdata_prefilter.recocrossingptinfo_v[ireco];
+    
+    // 	if ( sp.type()==larlitecv::kAnode || sp.type()==larlitecv::kCathode ) {
+
+    // 	  int tot_flashidx = sp.getFlashIndex();
+    // 	  int loc_flashidx = tot_flashidx;
+    // 	  std::cout << "--------------------------------------------------------------" << std::endl;
+    // 	  std::cout << "[ipt " << ireco << "] Anode/Cathode space point" << std::endl;
+    // 	  std::cout << "  flash index: " << tot_flashidx << std::endl;
+	  
+    // 	  larlite::opflash* popflash = NULL;
+    // 	  for ( int ievop=0; ievop<(int)event_opflash_v.size(); ievop++ ) {
+    // 	    if ( loc_flashidx >= event_opflash_v.at(ievop)->size() )
+    // 	      loc_flashidx -= (int)event_opflash_v.at(ievop)->size();
+    // 	    else
+    // 	      popflash = &(event_opflash_v.at(ievop)->at(loc_flashidx));
+    // 	  }
+
+    // 	  std::cout << "  flash local index: " << loc_flashidx << std::endl;		
+    // 	  std::cout << "  flash pointer: " << popflash << std::endl;
+    // 	  bool passes = cacaalgo.isEndPointGood( sp, popflash, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, sp.type(), 17.0, 50.0, 150 );
+    // 	  std::cout << "Result: " << passes << std::endl;
+    // 	  std::cout << "Has Truth Match: " << recoinfo.truthmatch << std::endl;
+
+    // 	  if ( recoinfo.truthmatch==1 ) {
+	    
+    // 	    const larlitecv::TruthCrossingPointAna_t& truthinfo = xingptdata_prefilter.truthcrossingptinfo_v[recoinfo.truthmatch_index];
+    // 	    std::cout << "Truth crossing position: (" << truthinfo.crossingpt_detsce[0] << "," << truthinfo.crossingpt_detsce[1] << "," << truthinfo.crossingpt_detsce[2] << ")" << std::endl;
+	    
+    // 	    // good reco point
+    // 	    if ( passes ) {
+    // 	      passes_caca[ireco] = 1;	  
+    // 	      good_npasses_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
+    // 	    }
+    // 	    else {
+    // 	      good_nfails_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
+    // 	      if ( ireco!=57 )
+    // 		stop = true;
+    // 	    }
+    // 	  }
+    // 	  else {
+    // 	    // bad reco point
+    // 	    if ( passes ) {
+    // 	      passes_caca[ireco] = 1;	  
+    // 	      bad_npasses_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
+    // 	    }
+    // 	    else
+    // 	      bad_nfails_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
+    // 	  }
+    // 	}// if anode or cathode
+
+    // 	if (stop)
+    // 	  break;
+	
+    //   }//end of space points loop
+    //   if ( stop )
+    // 	break;
+    // }//end of prefilter_spacepoints_v loop
+
+    // std::cout << "CACA Summary" << std::endl;
+    // std::cout << "  Good Anode:   " << good_npasses_caca[0] << "/" << good_npasses_caca[0]+good_nfails_caca[0] << std::endl;
+    // std::cout << "  Good Cathode: " << good_npasses_caca[1] << "/" << good_npasses_caca[1]+good_nfails_caca[1] << std::endl;    
+    // std::cout << "  Bad Anode:    " << bad_npasses_caca[0]  << "/" << bad_npasses_caca[0]+bad_nfails_caca[0] << std::endl;
+    // std::cout << "  Bad Cathode:  " << bad_npasses_caca[1]  << "/" << bad_npasses_caca[1]+bad_nfails_caca[1] << std::endl;    
+
+    
+    
     std::stringstream path;
-    path << "boundaryptimgs/astarcluster_test_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
-    cv::imwrite( path.str(), astar_cluster.m_cvimg_debug );
+    path << "boundaryptimgs/astarcluster_goodrecopts_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
+    cv::imwrite( path.str(), cacaalgo.getDebugImage(0) );
+    path.str("");
+    path << "boundaryptimgs/astarcluster_badrecopts_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
+    cv::imwrite( path.str(), cacaalgo.getDebugImage(1) );
+
+    
+    // // visualize cluster images
+    // cv::Mat cvimg_clustimg(imgs_v.front().meta().rows(),imgs_v.front().meta().cols(),CV_8UC3);
+    // cv::Mat cvimg_pathimg( imgs_v.front().meta().rows(),imgs_v.front().meta().cols(),CV_8UC3);
+    // for (int r=0; r<(int)imgs_v.front().meta().rows(); r++) {
+    //   for (int c=0; c<(int)imgs_v.front().meta().cols(); c++) {
+    // 	for (int p=0; p<3; p++) {
+    // 	  cvimg_clustimg.at<cv::Vec3b>( cv::Point(c,r) )[p] = astar_cluster.m_cvimg_v[p].at<uchar>( cv::Point(c,r) );
+    // 	  cvimg_pathimg.at<cv::Vec3b>(  cv::Point(c,r) )[p] = astar_cluster.m_cvpath_v[p].at<uchar>( cv::Point(c,r) );
+    // 	}
+    //   }
+    // }
+    // path.str("");
+    // path << "boundaryptimgs/astarcluster_clust_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
+    // cv::imwrite(path.str(),cvimg_clustimg );
+    // path.str("");
+    // path << "boundaryptimgs/astarcluster_path_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
+    // cv::imwrite(path.str(),cvimg_pathimg );
 
     std::cout << "===================================================" << std::endl;
     std::cout << "===================================================" << std::endl;
     
-
-    // =========================================================================================
+    assert(false);
+    
+    // =================================================================================================================
 
     
     // dump the images
@@ -934,236 +1044,6 @@ int main( int nargs, char** argv ) {
     // End of Reco Algorithms
     // =======================================================================    
 
-    // =======================================================================    
-    // RUN END POINT FILTERES
-    // ----------------------
-    /*
-
-    // first filter: radialfilter
-    std::vector< const larlitecv::BoundarySpacePoint* > pass_radial_filter;
-    std::vector< larlitecv::BoundarySpacePoint > pass_radial_filter_copy;
-    for ( auto const& psp : all_endpoints ) {
-      bool forms_segment = radialfilter.canFormSegment( (*psp).pos(), imgs_v, badch_v, 5.0, thresholds_v, 1, 2, 0.5, false ); // need parameters here
-      if ( forms_segment ) {
-        pass_radial_filter.push_back( psp );
-	pass_radial_filter_copy.push_back( *psp );
-      }
-    }
-    std::cout << "number of endpoints post-radial filter: " << pass_radial_filter.size() << std::endl;
-    std::vector< const std::vector<larlitecv::BoundarySpacePoint>* > postfilter_spacepoints_v;
-    postfilter_spacepoints_v.push_back( &pass_radial_filter_copy );
-
-    // --------------------------------------------------------------------------------
-    // DATA vs. MC comparison: post filter
-
-    if ( ismc ) {
-      // Compare reco and MC crossing point info
-      larlitecv::analyzeCrossingMatches( xingptdata_postfilter, postfilter_spacepoints_v, imgs_v.front().meta(), fMatchRadius );
-
-      // store the data into the tree
-      for (int istartpt=0; istartpt<(int)xingptdata_postfilter.start_type.size(); istartpt++) {
-	mcxingpt_type           = xingptdata_postfilter.start_type[istartpt];
-	mcxingpt_matched        = xingptdata_postfilter.matched_startpoint[istartpt];
-	if ( xingptdata_postfilter.matched_startpoint[istartpt] )
-	  mcxingpt_matched      = 1;
-	else
-	  mcxingpt_matched      = 0;	
-	mcxingpt_matched_type   = xingptdata_postfilter.matched_startpoint_type[istartpt];
-	mcxingpt_nplaneswcharge = xingptdata_postfilter.start_crossing_nplanes_w_charge[istartpt];
-	for (int p=0; p<3; p++) {
-	  mcxingpt_wire[p]      = xingptdata_postfilter.start_pixels[istartpt][p];
-	  mcxingpt_pos[p]       = xingptdata_postfilter.start_crossingpts[istartpt][p];
-	}
-	mcxingpt_dist           = xingptdata_postfilter.start_closest_match_dist[istartpt];
-	mcxingpt_postfilter_tree->Fill();
-      }
-
-      for (int iendpt=0; iendpt<(int)xingptdata_postfilter.end_type.size(); iendpt++) {
-	mcxingpt_type           = xingptdata_postfilter.end_type[iendpt];
-	if ( xingptdata_postfilter.matched_endpoint[iendpt] )
-	  mcxingpt_matched      = 1;
-	else
-	  mcxingpt_matched      = 0;
-	mcxingpt_matched_type   = xingptdata_postfilter.matched_endpoint_type[iendpt];
-	mcxingpt_nplaneswcharge = xingptdata_postfilter.end_crossing_nplanes_w_charge[iendpt];
-	for (int p=0; p<3; p++) {
-	  mcxingpt_wire[p]      = xingptdata_postfilter.end_pixels[iendpt][p];
-	  mcxingpt_pos[p]       = xingptdata_postfilter.end_crossingpts[iendpt][p];
-	}
-	mcxingpt_dist           = xingptdata_postfilter.end_closest_match_dist[iendpt];
-	mcxingpt_postfilter_tree->Fill();
-      }
-    }
-    // ----------------------------------------------------------------------------------
-    
-    // then we push the end points out
-    std::vector< larlitecv::BoundarySpacePoint > pushed_endpoints;
-    for ( auto const& psp : pass_radial_filter ) {
-      const larlitecv::BoundarySpacePoint& sp = (*psp);
-      if ( psp==NULL || sp.size()!=3 ) {
-        std::stringstream ss;
-        ss << "pass_radial_filter end point not well-formed. size=" << sp.size() << std::endl;
-        throw std::runtime_error(ss.str());
-      }
-      larlitecv::BoundarySpacePoint pushed = endptpusher.pushPoint( sp, imgs_v, badch_v );
-      if ( pushed.size()!=3 || pushed.pos().size()!=3 ) {
-        std::stringstream ss;
-        ss << "output of pushPoint not well-formed. size=" << pushed.size() << std::endl;
-        throw std::runtime_error(ss.str());
-      }
-      // we keep if the pushed end point is closer to the boundary in question
-      bool closer2wall = false;
-      if (sp.type()==0 && sp.pos()[1]<pushed.pos()[1])
-        closer2wall=true;
-      else if (sp.type()==1 && sp.pos()[1]>pushed.pos()[1] )
-        closer2wall=true;
-      else if (sp.type()==2 && sp.pos()[2]>pushed.pos()[2] )
-        closer2wall=true;
-      else if (sp.type()==3 && sp.pos()[2]<pushed.pos()[2])
-        closer2wall=true;
-      else if (sp.type()==4 && sp.pos()[0]>pushed.pos()[0])
-        closer2wall=true;
-      else if (sp.type()==5 && sp.pos()[0]<pushed.pos()[0])
-        closer2wall=true;
-      else if (sp.type()==6 && sp.pos()[0]<=0 && sp.pos()[0]>pushed.pos()[0])
-        closer2wall=true;
-      else if (sp.type()==6 && sp.pos()[0]>0 && sp.pos()[0]<pushed.pos()[0])
-        closer2wall=true;
-
-      std::cout << "Pushed type=" << sp.type()
-		<< " (" << sp.pos()[0] << "," << sp.pos()[1] << "," << sp.pos()[2] << ") -> "
-		<< " (" << pushed.pos()[0] << "," << pushed.pos()[1] << "," << pushed.pos()[2] << ")"
-		<< " closer2wall=" << closer2wall << std::endl;
-      
-      if ( closer2wall  )
-        pushed_endpoints.push_back( pushed );
-      else
-        pushed_endpoints.push_back( sp );
-    }
-    
-    std::vector< const larlitecv::BoundarySpacePoint* > pushed_ptr_endpoints;
-    for ( auto const& sp : pushed_endpoints ) {
-      pushed_ptr_endpoints.push_back( &sp );
-    }
-    
-    // debug
-    int itest=0;
-    for ( auto const& psp : pushed_ptr_endpoints ) {
-      if ( pushed_endpoints.at(itest).size()!=3 ) {
-        std::stringstream ss;
-        ss << __FILE__ << ":" << __LINE__
-            << " stored push-point not well-formed. size=" << pushed_endpoints.at(itest).size() << " idx=" << itest << std::endl;
-        throw std::runtime_error(ss.str());
-      }
-      if ( psp==NULL || psp->size()!=3 ) {
-        std::stringstream ss;
-        ss << __FILE__ << ":" << __LINE__
-            << " stored push-point ptr not well-formed. psp=" << psp << " size=" << psp->size() << " idx=" << itest << std::endl;
-        throw std::runtime_error(ss.str());
-      }
-      itest++;
-    }
-
-    // remove
-    std::vector<int> endpoint_passes( pushed_ptr_endpoints.size(), 1 );
-    //endptfilter.removeBoundaryAndFlashDuplicates( pushed_ptr_endpoints, imgs_v, gapch_v, endpoint_passes );
-    //endptfilter.removeSameBoundaryDuplicates( pushed_ptr_endpoints, imgs_v, gapch_v, endpoint_passes );
-    endptfilter.removeBoundaryAndFlashDuplicates( pushed_ptr_endpoints, imgs_v, badch_v, endpoint_passes );
-    endptfilter.removeSameBoundaryDuplicates( pushed_ptr_endpoints, imgs_v, badch_v, endpoint_passes );
-
-    // remove the filtered end points
-    std::vector< larlitecv::BoundarySpacePoint > side_filtered_v;
-    std::vector< larlitecv::BoundarySpacePoint > anode_filtered_v;
-    std::vector< larlitecv::BoundarySpacePoint > cathode_filtered_v;
-    std::vector< larlitecv::BoundarySpacePoint > imgends_filtered_v;
-    
-    for ( size_t idx=0; idx<endpoint_passes.size(); idx++ ) {
-      larlitecv::BoundarySpacePoint& sp = pushed_endpoints[idx];
-
-      if ( endpoint_passes.at(idx)==1 ) {
-        if (sp.type()<=larlitecv::kDownstream ) {
-          side_filtered_v.emplace_back( std::move(sp) );
-        }
-        else if (sp.type()==larlitecv::kAnode) {
-          anode_filtered_v.emplace_back( std::move(sp) );
-        }
-        else if (sp.type()==larlitecv::kCathode) {
-          cathode_filtered_v.emplace_back( std::move(sp) );
-        }
-        else if (sp.type()==larlitecv::kImageEnd) {
-          imgends_filtered_v.emplace_back( std::move(sp) );
-        }
-        else {
-          std::stringstream ss;
-          ss << __FILE__ << ":" << __LINE__ << " unrecognized boundary type" << std::endl;
-          throw std::runtime_error(ss.str());
-        }
-      }
-    }
-
-    // combined vector
-    std::vector< const std::vector<larlitecv::BoundarySpacePoint>* > filtered_spacepoints_v;
-    filtered_spacepoints_v.push_back( &side_filtered_v );
-    filtered_spacepoints_v.push_back( &anode_filtered_v );
-    filtered_spacepoints_v.push_back( &cathode_filtered_v );
-    filtered_spacepoints_v.push_back( &imgends_filtered_v );
-
-    std::cout << "Filtered Spacepoints" << std::endl;
-    for ( auto const& sp_v : filtered_spacepoints_v ) {
-      for ( auto const& sp : *sp_v ) {
-	std::cout << "  ";
-	for (int i=0; i<3; i++)
-	  std::cout << "(" << sp[i].row << "," << sp[i].col << ") ";
-	std::cout << std::endl;
-      }
-    }
-
-    std::cout << "== End of Boundary Tagger ===============================" << std::endl;
-
-    // ========================================================================================
-    // DATA vs. MC comparison: post filter and move
-
-    if ( ismc ) {
-      // Compare reco and MC crossing point info
-      larlitecv::analyzeCrossingMatches( xingptdata, filtered_spacepoints_v, imgs_v.front().meta(), fMatchRadius );
-
-      // store the data into the tree
-      for (int istartpt=0; istartpt<(int)xingptdata.start_type.size(); istartpt++) {
-	mcxingpt_type           = xingptdata.start_type[istartpt];
-	mcxingpt_matched        = xingptdata.matched_startpoint[istartpt];
-	if ( xingptdata.matched_startpoint[istartpt] )
-	  mcxingpt_matched      = 1;
-	else
-	  mcxingpt_matched      = 0;	
-	mcxingpt_matched_type   = xingptdata.matched_startpoint_type[istartpt];
-	mcxingpt_nplaneswcharge = xingptdata.start_crossing_nplanes_w_charge[istartpt];
-	for (int p=0; p<3; p++) {
-	  mcxingpt_wire[p]      = xingptdata.start_pixels[istartpt][p];
-	  mcxingpt_pos[p]       = xingptdata.start_crossingpts[istartpt][p];
-	}
-	mcxingpt_dist           = xingptdata.start_closest_match_dist[istartpt];
-	mcxingpt_tree->Fill();
-      }
-
-      for (int iendpt=0; iendpt<(int)xingptdata.end_type.size(); iendpt++) {
-	mcxingpt_type           = xingptdata.end_type[iendpt];
-	if ( xingptdata.matched_endpoint[iendpt] )
-	  mcxingpt_matched      = 1;
-	else
-	  mcxingpt_matched      = 0;
-	mcxingpt_matched_type   = xingptdata.matched_endpoint_type[iendpt];
-	mcxingpt_nplaneswcharge = xingptdata.end_crossing_nplanes_w_charge[iendpt];
-	for (int p=0; p<3; p++) {
-	  mcxingpt_wire[p]      = xingptdata.end_pixels[iendpt][p];
-	  mcxingpt_pos[p]       = xingptdata.end_crossingpts[iendpt][p];
-	}
-	mcxingpt_dist           = xingptdata.end_closest_match_dist[iendpt];
-	mcxingpt_tree->Fill();
-      }
-    }
-
-    */
-    // ===============================================================================================
     
     tree->Fill();
 
