@@ -212,7 +212,7 @@ namespace larlitecv {
     }
     
     passes_filter.clear();
-    
+
     for ( auto const& p_sp_v : sp_v ) {
       std::vector<int> passes_v(p_sp_v->size(),0);
 
@@ -221,8 +221,12 @@ namespace larlitecv {
 	ireco++; // counter for all spacepoint indices
 	isp++;   // counter for sp index of this vector
 
-	if ( sp.type()==larlitecv::kTop || sp.type()==larlitecv::kAnode || sp.type()==larlitecv::kCathode ) {
-
+	// if ( sp.type()==larlitecv::kTop
+	//      || sp.type()==larlitecv::kBottom
+	//      || sp.type()==larlitecv::kAnode
+	//      || sp.type()==larlitecv::kCathode ) {
+	if ( sp.type()==larlitecv::kAnode ) {
+	
 	  clearClusters();
 	  
 	  int tot_flashidx = sp.getFlashIndex();
@@ -283,7 +287,12 @@ namespace larlitecv {
 	      if ( m_verbosity>1 )  {
 		std::cout << "Truth crossing position: "
 			  << "(" << truthinfo->crossingpt_detsce[0] << "," << truthinfo->crossingpt_detsce[1] << "," << truthinfo->crossingpt_detsce[2] << ")"
+			  << " dist=" << recoinfo->truthmatch_dist
 			  << std::endl;
+		std::cout << "Closest Stored Truth crossing position: "
+			  << "(" << recoinfo->truthmatch_detsce_tyz[0] << "," << recoinfo->truthmatch_detsce_tyz[1] << "," << recoinfo->truthmatch_detsce_tyz[2] << ")"
+			  << " dist=" << recoinfo->truthmatch_dist
+			  << std::endl;		
 	      }
 	    
 	      // good reco point
@@ -303,10 +312,30 @@ namespace larlitecv {
 	      }
 	      else
 		bad_nfails_caca[(int)sp.type()]++;
+
+	      if ( m_verbosity>1) {
+		const larlitecv::TruthCrossingPointAna_t* truthinfo = NULL;
+		try {
+		  truthinfo = &(m_truthinfo_ptr_v->at(recoinfo->truthmatch_index));
+		  std::cout << "Closest Truth crossing position: "
+			    << "(" << truthinfo->crossingpt_detsce[0] << "," << truthinfo->crossingpt_detsce[1] << "," << truthinfo->crossingpt_detsce[2] << ")"
+			    << " dist=" << recoinfo->truthmatch_dist
+			    << std::endl;
+		  std::cout << "Closest Stored Truth crossing position: "
+			    << "(" << recoinfo->truthmatch_detsce_tyz[0] << "," << recoinfo->truthmatch_detsce_tyz[1] << "," << recoinfo->truthmatch_detsce_tyz[2] << ")"
+			    << " dist=" << recoinfo->truthmatch_dist
+			    << std::endl;
+		}
+		catch (...) {
+		  std::cout << "No closest truth point on record." << std::endl;
+		  continue;
+		}
+	      }
+	      
 	    }//end of if non-matched reco point	    
 	  }// if truth loaded
 
-
+	  
 	  if ( fMakeDebugImage ) {
 	    // we draw the cluster and end point
 	    
@@ -342,7 +371,12 @@ namespace larlitecv {
 	      cv::Scalar ptcolor(0,255,255,255);
 	      if ( passes )
 		ptcolor = cv::Scalar(255,0,255,255);
-	      cv::circle( m_cvimg_rgbdebug[img_index], cv::Point( sp_imgcoords[p+1], sp_imgcoords[0] ), 3, ptcolor, 1 );
+	      cv::circle(  m_cvimg_rgbdebug[img_index], cv::Point( sp_imgcoords[p+1], sp_imgcoords[0] ), 3, ptcolor, 1 );
+	      // draw end point
+	      std::stringstream ptname;	  
+	      ptname << "#" << ireco;
+	      cv::putText( m_cvimg_rgbdebug[img_index], cv::String(ptname.str()), cv::Point( sp_imgcoords[p+1]+2, sp_imgcoords[0]+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.5, ptcolor );
+	      
 	    }// end of plane loop
 	  }//end of if debug image
 	  
