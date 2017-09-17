@@ -73,6 +73,30 @@ for name in treenames:
     ctype.Update()
     ctype.SaveAs("truthxingpt_%s_truthtypes.png"%(name))    
 
+    # TYPE: Top per event
+    ctype = rt.TCanvas("ctypeperevent","[%s] Truth End point type per event"%(name), 1400, 600)
+    ctype.Draw()
+    ctype.Divide(3,2)
+    ctype.cd(1)
+    htype_top = rt.TH1D("htype_top", "",30,0,30)
+    tree.Draw("truth_type>>htype_matched","matched==1 && flashmatched==1")
+    tree.Draw("truth_type>>htype_totaled","matched>=0 && flashmatched==1")
+    tree.Draw("truth_type>>htype_ratio","matched==1 && flashmatched==1")
+    htype_totaled.SetMinimum(0)
+    htype_totaled.Draw()
+    htype_matched.Draw("same")
+    htype_matched.SetLineColor(rt.kRed)
+    htype_ratio.Divide( htype_totaled )
+
+    htype_totaled.Draw()
+    htype_matched.Draw("same")
+    
+    ctype.cd(2)
+    htype_ratio.GetYaxis().SetRangeUser(0,1)
+    htype_ratio.Draw()
+    ctype.Update()
+    ctype.SaveAs("truthxingpt_%s_truthtypes.png"%(name))    
+    
     # DIST
     cdist = rt.TCanvas("cdist","Truth Dist", 1800, 1800)
     cdist.Draw()
