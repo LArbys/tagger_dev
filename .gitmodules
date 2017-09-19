@@ -22,3 +22,9 @@
 [submodule "boundary_crossing_pts/LArOpenCV"]
 	path = boundary_crossing_pts/LArOpenCV
 	url = http://github.com/NevisUB/LArOpenCV
+[submodule "flashandcharge_trackselect/LArOpenCV"]
+	path = flashandcharge_trackselect/LArOpenCV
+	url = http://github.com/NevisUB/LArOpenCV
+[submodule "flashandcharge_trackselect/Geo2D"]
+	path = flashandcharge_trackselect/Geo2D
+	url = http://github.com/LArbys/Geo2D

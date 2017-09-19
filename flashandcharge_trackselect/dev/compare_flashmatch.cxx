@@ -376,7 +376,7 @@ int main( int nargs, char** argv ){
     int vertex_row = -1;
 
     // Declare a vector of all the reconstructed endpoints for the tracks.
-    std::vector < const larlitecv::BoundarySpacePoint > mctrack_endpts_all_tracks;
+    std::vector < larlitecv::BoundarySpacePoint > mctrack_endpts_all_tracks;
     mctrack_endpts_all_tracks.clear();
 
     // Vector for 'mctrack' indices.
@@ -417,30 +417,43 @@ int main( int nargs, char** argv ){
 	  end_index = xingptdata.mctrack_imgendpoint_indices[itrack][1];
 	larlitecv::BoundarySpacePoint* pstartpt = NULL;
 	larlitecv::BoundarySpacePoint* pendpt   = NULL;
+	int start_nplanes_wcharge = 0;
+	int end_nplanes_wcharge   = 0;	
 	if (  start_index!=-1 ) {
 	  // make a boundary space point object for the start;
+
+	  // get truth crossingpt info
+	  const larlitecv::TruthCrossingPointAna_t& truthxing = xingptdata.truthcrossingptinfo_v[start_index];
+	  start_nplanes_wcharge = truthxing.nplanes_w_charge;
+	  
 	  std::vector< larlitecv::BoundaryEndPt > planepts;
+	  int row = truthxing.imgcoord[0];	  
 	  for (int p=0; p<3; p++) {
-	    int row = xingptdata.start_pixels[start_index][0];
-	    int col = xingptdata.start_pixels[start_index][p+1];
+	    int col = truthxing.imgcoord[p+1];
 	    if ( col<0 ) col = 0; // hack
-	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)xingptdata.start_type[start_index] );
+	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)truthxing.type );
 	    planepts.emplace_back( std::move(planept) );
 	  }
-	  pstartpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)xingptdata.start_type[start_index], std::move(planepts), imgs_v.front().meta() );
+	  // make the boundary spacepoint
+	  pstartpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)truthxing.type, std::move(planepts), imgs_v.front().meta() );
 	  mctrack_endpts.push_back( pstartpt );
 	}
 	if ( end_index!=-1 ) {
 	  // make a boundary space point object for the end;
+
+	  // get truth crossing information
+	  const larlitecv::TruthCrossingPointAna_t& truthxing = xingptdata.truthcrossingptinfo_v[start_index];
+	  end_nplanes_wcharge = truthxing.nplanes_w_charge;	  
+	  
 	  std::vector< larlitecv::BoundaryEndPt > planepts;
+	  int row = truthxing.imgcoord[0];	  
 	  for (int p=0; p<3; p++) {
-	    int row=xingptdata.end_pixels[end_index][0];
-	    int col=xingptdata.end_pixels[end_index][p+1];
+	    int col = truthxing.imgcoord[p+1];
 	    if ( col<0 ) col = 0;
-	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)xingptdata.end_type[end_index] );
+	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)truthxing.type );
 	    planepts.emplace_back( std::move(planept) );
 	  }
-	  pendpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)xingptdata.end_type[end_index], std::move(planepts), imgs_v.front().meta() );
+	  pendpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)truthxing.type, std::move(planepts), imgs_v.front().meta() );
 	  mctrack_endpts.push_back( pendpt );
 	}
 	std::cout << " startidx=" << start_index << " endidx=" << end_index << " ";
@@ -457,19 +470,19 @@ int main( int nargs, char** argv ){
 	  std::cout << " start=(" << mctrack_endpts[0]->at(0).row << "," << mctrack_endpts[0]->at(0).col << "," << mctrack_endpts[0]->at(1).col << "," << mctrack_endpts[0]->at(2).col << ")";
 	  std::cout << " end(" << mctrack_endpts[1]->at(0).row << "," << mctrack_endpts[1]->at(0).col << "," << mctrack_endpts[1]->at(1).col << "," << mctrack_endpts[1]->at(2).col << ")";
 	  ntracks_all++;
-	  if ( xingptdata.start_crossing_nplanes_w_charge[start_index]>=2 && xingptdata.end_crossing_nplanes_w_charge[end_index]>=2)
+	  if ( start_nplanes_wcharge>=2 && end_nplanes_wcharge>=2)
 	    ntracks_2planeq++;
 	  try {
 	    thrumualgo.makeTrackClusters3D( imgs_v, badch_v, mctrack_endpts, trackclusters, tagged_v, used_endpoints_indices );
 	    if ( trackclusters.size()>0 ) {
 	      // successful reco returned!
 	      ntracks_recod_all++;
-	      if ( xingptdata.start_crossing_nplanes_w_charge[start_index]>=2 && xingptdata.end_crossing_nplanes_w_charge[end_index]>=2)
+	      if ( start_nplanes_wcharge>=2 && end_nplanes_wcharge>=2)
 		ntracks_recod_2planeq++;
 	      
 	      // Append the endpoints onto the 'mctrack_endpts_all_tracks' by using the information in 'trackclusters.at(0)'.
-	      const larlitecv::BoundarySpacePoint start_endpt_mctrack = trackclusters.at(0).start_endpts;
-	      const larlitecv::BoundarySpacePoint end_endpt_mctrack = trackclusters.at(0).end_endpts;
+	      larlitecv::BoundarySpacePoint start_endpt_mctrack = trackclusters.at(0).start_endpts;
+	      larlitecv::BoundarySpacePoint end_endpt_mctrack = trackclusters.at(0).end_endpts;
               mctrack_endpts_all_tracks.push_back(start_endpt_mctrack);
               mctrack_endpts_all_tracks.push_back(end_endpt_mctrack);
 	      mc_recotracks.emplace_back( std::move(trackclusters.at(0)) );
@@ -485,7 +498,7 @@ int main( int nargs, char** argv ){
 	      const std::vector<int>& endpoint_indices = xingptdata.mctrack_imgendpoint_indices[itrack];	      
 	      int flashindex = -1;
 	      if ( endpoint_indices.size()>0 && endpoint_indices[0]!=-1 ) {
-		flashindex = xingptdata.start_crossing_flashindex[ endpoint_indices[0] ];
+		flashindex = xingptdata.truthcrossingptinfo_v[ endpoint_indices[0] ].flashindex;
 	      }
 
 	      const larlite::opflash* popflash = NULL;
@@ -499,10 +512,10 @@ int main( int nargs, char** argv ){
 		  nflash += (int)evflash_v->size();
 		}
 	      }
-
+	      
 	      mctrack_idx_v.push_back( itrack );
 	      truth_flash_ptrs.push_back( popflash );
-	      }
+	    }
 	  }
 	  catch ( std::exception& e ) {
 	    std::cout << std::endl;
@@ -579,7 +592,7 @@ int main( int nargs, char** argv ){
       truth_flash_ptrs_parsed_idx.clear();
 
       // Declare a new vector of qclusters that only includes those matched to a flash.
-      std::vector < const flashana::QCluster_t > qcluster_v_parsed;
+      std::vector < flashana::QCluster_t > qcluster_v_parsed;
       qcluster_v_parsed.clear();
 
       // Declare a matching parameter.
@@ -821,36 +834,32 @@ int main( int nargs, char** argv ){
       // --------------------------------------------------------------------------------
       // OPEN CV VISUALIZATION
 #ifdef USE_OPENCV
-      // draw start points
-      for ( int ipt=0; ipt<(int)xingptdata.start_pixels.size(); ipt++) {
-	int row=xingptdata.start_pixels[ipt][0];
+      // draw crossing points
+      for ( int ipt=0; ipt<(int)xingptdata.truthcrossingptinfo_v.size(); ipt++) {
+	
+	const larlitecv::TruthCrossingPointAna_t& truthxing = xingptdata.truthcrossingptinfo_v[ipt];
+	
+	// color of marker depends on end point
+	cv::Scalar markercolor(0,0,0,0);
+	if ( truthxing.start_or_end==0 )
+	  markercolor = cv::Scalar(0,0,255,255);
+	else
+	  markercolor = cv::Scalar(255,0,0,255);
+	
+	int row=truthxing.imgcoord[0];
 	if (row<0) row = 0;
 	if (row>=(int)imgs_v.front().meta().rows() ) row = (int)imgs_v.front().meta().rows()-1;
 	for (int p=0; p<3; p++) {
-	  int col = xingptdata.start_pixels[ipt][p+1];
+	  int col = truthxing.imgcoord[p+1];
 	  if ( col<0 ) col = 0;
 	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
 	  int radius = -1;
-	  if ( xingptdata.start_crossing_nplanes_w_charge[ipt]<=1 )
+	  if ( truthxing.nplanes_w_charge<=1 )
 	    radius = 1;
-	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0, 0, 255, 255 ), radius );
+	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, markercolor, radius );
 	}
       }
-      // draw end points
-      for ( int ipt=0; ipt<(int)xingptdata.end_pixels.size(); ipt++) {
-	int row=xingptdata.end_pixels[ipt][0];
-	if (row<0) row = 0;
-	if (row>=(int)imgs_v.front().meta().rows() ) row = (int)imgs_v.front().meta().rows()-1;
-	for (int p=0; p<3; p++) {
-	  int col = xingptdata.end_pixels[ipt][p+1];
-	  if ( col<0 ) col = 0;
-	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
-	  int radius = -1;
-	  if ( xingptdata.end_crossing_nplanes_w_charge[ipt]<=1 )
-	    radius = 1;
-	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 0, 0, 255 ), radius );
-	}
-      }
+
       // draw tracks      
       for (auto const& track : mc_recotracks ) {
 	std::vector<larcv::Pixel2DCluster> plane_pixels = larlitecv::getTrackPixelsFromImages( track.path3d,  imgs_v, badch_v, label_thresholds_v, label_neighborhood, 0.3 );
@@ -887,7 +896,7 @@ int main( int nargs, char** argv ){
     // Increment 'total_num_tracks' by 'track_idx + 1'.
     //total_num_tracks += track_idx + 1;
     
-} //end of entry loop
+  } //end of entry loop
 
   //std::cout << "The total number of tracks in this sample = " << total_num_tracks << "." << std::endl;
   //std::cout << "The number of tracks with a better chi2 than the original = " << num_tracks_better_new_chi2 << "." << std::endl;
