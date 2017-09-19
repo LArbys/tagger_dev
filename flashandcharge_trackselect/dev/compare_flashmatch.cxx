@@ -427,13 +427,24 @@ int main( int nargs, char** argv ){
 	  start_nplanes_wcharge = truthxing.nplanes_w_charge;
 	  
 	  std::vector< larlitecv::BoundaryEndPt > planepts;
-	  int row = truthxing.imgcoord[0];	  
+	  int row = truthxing.imgcoord[0];
+	  if (row<0 || row>=imgs_v.front().meta().rows()) {
+	    std::cout << "BAD START POINT: (" << truthxing.imgcoord[0] << "," << truthxing.imgcoord[1] << "," << truthxing.imgcoord[2] << "," << truthxing.imgcoord[3] << ")" << std::endl;
+	    continue;
+	  }
+	  bool goodpt = true;
 	  for (int p=0; p<3; p++) {
 	    int col = truthxing.imgcoord[p+1];
-	    if ( col<0 ) col = 0; // hack
+	    if ( col<0 || col>=imgs_v.front().meta().cols() ) {
+	      std::cout << "BAD START POINT: (" << truthxing.imgcoord[0] << "," << truthxing.imgcoord[1] << "," << truthxing.imgcoord[2] << "," << truthxing.imgcoord[3] << ")" << std::endl;
+	      goodpt = false;
+	      break;
+	    }
 	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)truthxing.type );
 	    planepts.emplace_back( std::move(planept) );
 	  }
+	  if ( !goodpt )
+	    continue;
 	  // make the boundary spacepoint
 	  pstartpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)truthxing.type, std::move(planepts), imgs_v.front().meta() );
 	  mctrack_endpts.push_back( pstartpt );
@@ -446,12 +457,28 @@ int main( int nargs, char** argv ){
 	  end_nplanes_wcharge = truthxing.nplanes_w_charge;	  
 	  
 	  std::vector< larlitecv::BoundaryEndPt > planepts;
-	  int row = truthxing.imgcoord[0];	  
+	  int row = truthxing.imgcoord[0];
+	  if (row<0 || row>=imgs_v.front().meta().rows()) {
+	    std::cout << "BAD END POINT: (" << truthxing.imgcoord[0] << "," << truthxing.imgcoord[1] << "," << truthxing.imgcoord[2] << "," << truthxing.imgcoord[3] << ")" << std::endl;
+	    // need to cleanup start point
+	    if ( pstartpt )
+	      delete pstartpt;
+	    continue;
+	  }
+	  bool goodpt = true;
 	  for (int p=0; p<3; p++) {
 	    int col = truthxing.imgcoord[p+1];
-	    if ( col<0 ) col = 0;
+	    if ( col<0 || col>=imgs_v.front().meta().cols() ) {
+	      std::cout << "BAD END POINT: (" << truthxing.imgcoord[0] << "," << truthxing.imgcoord[1] << "," << truthxing.imgcoord[2] << "," << truthxing.imgcoord[3] << ")" << std::endl;
+	      goodpt = false;
+	      break;
+	    }
 	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)truthxing.type );
 	    planepts.emplace_back( std::move(planept) );
+	  }
+	  if ( !goodpt ) {
+	    delete pstartpt;
+	    continue;
 	  }
 	  pendpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)truthxing.type, std::move(planepts), imgs_v.front().meta() );
 	  mctrack_endpts.push_back( pendpt );
@@ -523,57 +550,32 @@ int main( int nargs, char** argv ){
 	    std::cout << "  ThruMu Failed: " << e.what() << std::endl;
 	  }
 	}
+
+	// we have to delete the end points as we used new
+	for (int i=0; i<(int)mctrack_endpts.size(); i++) {
+	  delete mctrack_endpts[i];
+	  mctrack_endpts[i] = NULL;	  
+	}
 	mctrack_endpts.clear();
 
 	std::cout << "tracker return " << trackclusters.size() << " thrumu tracks" << std::endl;
 	
-	delete pstartpt;
-	delete pendpt;
 	std::cout << std::endl;
       } //end of mctrack loop
-
-      // --------------------------------------------------------------------------------
-      // Compare Q sums between planes
-      for ( auto const& bmtrack : mc_recotracks ) {
-	std::vector<larlitecv::PixelQPt> trackq = larlitecv::getPixelQPts( bmtrack.path3d, imgs_v, badch_v, 5, 5.0, 0.3 );
-	for ( auto const& qpt : trackq )  {
-	  for (int p=0; p<3; p++) {
-	    plane_trackq[p] = qpt.getPlaneCharge()[p];
-	    float totpix = qpt.getGoodPixelsPerPlane()[p]+qpt.getBadPixelsPerPlane()[p];
-	    plane_goodpix[p] = qpt.getGoodPixelsPerPlane()[p];
-	    if ( totpix>0 )
-	      plane_goodfrac[p] = float(plane_goodpix[p])/totpix;
-	    else
-	      plane_goodfrac[p] = 0.0;
-	  }
-	  uv_trackqdiff = plane_trackq[0]-plane_trackq[1];
-	  uy_trackqdiff = plane_trackq[0]-plane_trackq[2];
-	  vy_trackqdiff = plane_trackq[1]-plane_trackq[2];
-	  ptqtree->Fill();
-	}
-	std::vector<double> total_track_q = larlitecv::getTrackTotalPixelCharge( bmtrack.path3d, imgs_v, badch_v, 5, 5.0, 0.3 );
-	for ( int p=0; p<3; p++) {
-	  plane_tracktotq[p] = total_track_q[p];
-	}
-	uv_totqdiff = plane_tracktotq[0]-plane_tracktotq[1];
-	uy_totqdiff = plane_tracktotq[0]-plane_tracktotq[2];
-	vy_totqdiff = plane_tracktotq[1]-plane_tracktotq[2];
-	trackqtree->Fill();
-      }//end of loop over MC reco tracks
-      // --------------------------------------------------------------------------------
 
       // --------------------------------------------------------------------------------
       // Get Chi-2 of flash hypo from reco track and truth flash
 
       // Make the 'ev_mctrack' pointer into an 'ev_mctrack' object (to be used in the check here and in the normal method below).
 
-      larlite::event_mctrack ev_mctrack_val       = *ev_mctrack;
+      //larlite::event_mctrack ev_mctrack_val       = *ev_mctrack; // note from tmw. this is a copy. you can do the same thing
       larlite::event_mcshower ev_mcs;
       flashana::LightPath lightpath;
 
       // Use the 'Configure' function with this object to convert the MCTrack objects into qclusters.
       // This function is a void, so it just sets the input data types to the function.
-      MCQCluster_object.Construct( ev_mctrack_val, ev_mcs, lightpath );
+      // tmw note: you can derefence the pointer in the argument, which will pass by reference. no copy involved.
+      MCQCluster_object.Construct( *ev_mctrack, ev_mcs, lightpath );
 
       // Extract the qclusters that are within 5 us of one of the flashes.
       std::vector < flashana::QCluster_t > qcluster_v;
@@ -582,6 +584,7 @@ int main( int nargs, char** argv ){
       qcluster_v = MCQCluster_object.QClusters();
 
       std::cout << "The size of 'qcluster_v' = " << qcluster_v.size() << "." << std::endl;
+      std::cout << "The size of 'qcluster_v' = " << MCQCluster_object.QClusters().size() << "." << std::endl;      
       std::cout << "The size of 'truth_flash_pointers' = " << truth_flash_ptrs.size() << "." << std::endl;
 
       // Declare a new vector of truth_flash_pointers that only includes those that are matched to a QCluster.
