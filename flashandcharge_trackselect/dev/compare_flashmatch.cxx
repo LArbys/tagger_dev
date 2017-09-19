@@ -442,7 +442,7 @@ int main( int nargs, char** argv ){
 	  // make a boundary space point object for the end;
 
 	  // get truth crossing information
-	  const larlitecv::TruthCrossingPointAna_t& truthxing = xingptdata.truthcrossingptinfo_v[start_index];
+	  const larlitecv::TruthCrossingPointAna_t& truthxing = xingptdata.truthcrossingptinfo_v[end_index];
 	  end_nplanes_wcharge = truthxing.nplanes_w_charge;	  
 	  
 	  std::vector< larlitecv::BoundaryEndPt > planepts;
@@ -469,6 +469,7 @@ int main( int nargs, char** argv ){
 	if ( start_index>=0 && end_index>=0 ) {
 	  std::cout << " start=(" << mctrack_endpts[0]->at(0).row << "," << mctrack_endpts[0]->at(0).col << "," << mctrack_endpts[0]->at(1).col << "," << mctrack_endpts[0]->at(2).col << ")";
 	  std::cout << " end(" << mctrack_endpts[1]->at(0).row << "," << mctrack_endpts[1]->at(0).col << "," << mctrack_endpts[1]->at(1).col << "," << mctrack_endpts[1]->at(2).col << ")";
+	  std::cout << " nplanes_qcharge[ start=" << start_nplanes_wcharge << " end=" << end_nplanes_wcharge << "]" << std::endl;
 	  ntracks_all++;
 	  if ( start_nplanes_wcharge>=2 && end_nplanes_wcharge>=2)
 	    ntracks_2planeq++;
