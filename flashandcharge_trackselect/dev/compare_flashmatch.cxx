@@ -3,6 +3,8 @@
 #include <string>
 
 // ROOT
+#include "TString.h"
+#include "TImage.h"
 #include "TFile.h"
 #include "TTree.h"
 #include "TCanvas.h"
@@ -11,28 +13,21 @@
 // larcv
 #include "DataFormat/EventImage2D.h"
 #include "DataFormat/EventPixel2D.h"
-//#include "DataFormat/EventROI.h"
 #include "DataFormat/EventChStatus.h"
 #include "Base/PSet.h"
 #include "Base/LArCVBaseUtilFunc.h"
-//#include "UBWireTool/UBWireTool.h"
 
 // larlite
-// #include "DataFormat/mctruth.h"
-// #include "DataFormat/mcpart.h"
-// #include "DataFormat/mctrajectory.h"
 #include "DataFormat/mctrack.h"
-// #include "DataFormat/mcshower.h"
-// #include "DataFormat/simch.h"
 #include "DataFormat/trigger.h"
-// #include "DataFormat/track.h"
-// #include "LArUtil/LArProperties.h"
 #include "LArUtil/Geometry.h"
 #include "LArUtil/LArProperties.h"
+#include "OpT0Finder/App/MCQCluster.h"
+#include "FhiclLite/FhiclLiteUtilFunc.h"
+#include "OpT0Finder/Algorithms/QLLMatch.h"
 
 // larlitecv
 #include "Base/DataCoordinator.h"
-//#include "SCE/SpaceChargeMicroBooNE.h"
 #include "GapChs/EmptyChannelAlgo.h"
 #include "TaggerTypes/BoundaryMuonTaggerTypes.h"
 #include "TaggerTypes/BoundaryEndPt.h"
@@ -61,7 +56,7 @@
 #include "ThruMu/FlashMuonTaggerAlgo.h"
 
 
-int main( int nargs, char** argv ) {
+int main( int nargs, char** argv ){
   
   std::cout << "COMPARE TRACK CHARGE" << std::endl;
 
@@ -120,37 +115,7 @@ int main( int nargs, char** argv ) {
   std::vector<int> label_neighborhood(3,0);
 
   const larutil::Geometry* geo = ::larutil::Geometry::GetME();
-  
-  // bool use_reclustered   = pset.get<bool>("UseReclustered");
-  // int tag_neighborhood   = pset.get<int>("TagNeighborhood",10);
-  // int fvertex_radius     = pset.get<int>("PixelRadius");  
-
-
- // =====================================================================
-
-  // // setup input
-  // int kThruMu, kStopMu, kUntagged, kCROI, kNumStages;
-
-  // std::vector<std::string> stages_pixel_producers;
-  // std::vector<std::string> stages_track_producers;  
-  // if ( use_reclustered ) {
-  //   kNumStages = 4;
-  //   kThruMu = 0;
-  //   kStopMu = 1;    
-  //   kUntagged = 2;
-  //   kCROI = 3;
-  //   stages_pixel_producers.resize(kNumStages);
-  //   stages_pixel_producers[0] = "mergedthrumupixels";
-  //   stages_pixel_producers[1] = "mergedstopmupixels";
-  //   stages_pixel_producers[2] = "mergeduntaggedpixels";
-  //   stages_pixel_producers[3] = "croipixels";
-  //   stages_track_producers.resize(kNumStages);    
-  //   stages_track_producers[0] = "mergedthrumu3d";
-  //   stages_track_producers[1] = "mergedstopmu3d";
-  //   stages_track_producers[2] = "mergeduntagged3d";
-  //   stages_track_producers[3] = "croi3d";    
-  // }
-  
+    
   // setup output
   TFile* rfile = new TFile(outfname.c_str(), "recreate");
   TTree* tree = new TTree("compareq", "Compare Track Charge");
@@ -160,30 +125,6 @@ int main( int nargs, char** argv ) {
 
   // Truth Quantities about interaction and lepton
   larlitecv::TruthData_t truthdata;
-
-  // // Truth Pixel Quantities
-  // int nthreshold_pixels[4]; // number of pixels above threshold
-  // int ncosmic_pixels[4];    // number of non-neutrino pixels
-  // int nnu_pixels[4];        // number of neutrino pixels
-  // int nvertex_pixels[4];    // number of neutrino pixels within some pixel radius of vertex
-  // int nvertex_badch[4];
-
-  // // Tagged Pixel Quantities
-  // int ncosmic_tagged[kNumStages][4];       // number of non-neutrino pixels tagged
-  // int ncosmic_tagged_once[kNumStages][4];  // number of non-neutrino pixels tagged
-  // int ncosmic_tagged_many[kNumStages][4];  // number of non-neutrino pixels tagged
-  // int nnu_tagged[kNumStages][4];           // number of neutrino pixels tagged
-  // int nvertex_tagged[kNumStages][4];       // number of neutrino pixels within some pixel radius of vertex tagged
-  // int nvertex_incroi[4];                   // number of pixels near neutrino vertex that are in an ROI
-  // std::stringstream s_arr;
-  // s_arr << "[" << (int)kNumStages << "][4]/I";
-
-  // // ROI quantities
-  // int num_rois;     // number of identified ROis
-  // int nnu_inroi[4]; // number of nu pixels contained in the CROI
-  // int vertex_in_croi; // is vertex in an CROI
-  // float closest_dist_to_vertex;
-  // int closest_dist_stage;
   
   // Crossing Point data
   larlitecv::CrossingPointAnaData_t xingptdata;
@@ -195,19 +136,6 @@ int main( int nargs, char** argv ) {
 
   // Truth
   truthdata.bindToTree( tree );
-
-  // tree->Branch("nthreshold_pixels", nthreshold_pixels, "nthreshold_pixels[4]/I");
-  // tree->Branch("ncosmic_pixels",    ncosmic_pixels,    "ncosmic_pixels[4]/I");
-  // tree->Branch("nnu_pixels",        nnu_pixels,        "nnu_pixels[4]/I");
-  // tree->Branch("nvertex_pixels",    nvertex_pixels,    "nvertex_pixels[4]/I");
-  // tree->Branch("nvertex_badch",     nvertex_badch,     "nvertex_badch[4]/I");
-
-  // tree->Branch("ncosmic_tagged",      ncosmic_tagged,      std::string("ncosmic_tagged"+s_arr.str()).c_str() );
-  // tree->Branch("ncosmic_tagged_once", ncosmic_tagged_once, std::string("ncosmic_tagged_once"+s_arr.str()).c_str() );
-  // tree->Branch("ncosmic_tagged_many", ncosmic_tagged_many, std::string("ncosmic_tagged_many"+s_arr.str()).c_str() );
-  // tree->Branch("nnu_tagged",          nnu_tagged,          std::string("nnu_tagged"+s_arr.str()).c_str() );
-  // tree->Branch("nvertex_tagged",      nvertex_tagged,      std::string("nvertex_tagged"+s_arr.str()).c_str() );
-  // tree->Branch("nvertex_incroi",      nvertex_incroi,      "nvertex_incroi[4]/I" );
 
   // truth end point track reco metrics
   int ntracks_2planeq = 0;
@@ -250,24 +178,30 @@ int main( int nargs, char** argv ) {
   float chi2;
   float min_dchi2;
 
-  TTree* flashmatchtree = new TTree("FlashMatch", "Flash Match Tree" );
+  // A tree that will contain the chi2 value for all of the tracks.
+  // The total number of entries in this tree better equal the sum of the entries of the other two trees.
+  TTree* totalchi2tree  = new TTree("TotalChi2Tree", "Chi2 Value for All Matched Tracks");
+  totalchi2tree->Branch("chi2", &chi2, "chi2/F");
+
+  TTree* flashmatchtree = new TTree("FlashMatchTree", "Flash Match Info w/ MC Tracks");
   flashmatchtree->Branch("chi2", &chi2, "chi2/F");
   flashmatchtree->Branch("min_dchi2", &min_dchi2, "min_dchi2/F");
+
+  float track_num;
+  float num_flashes_with_better_chi2;
+
+  // Declare a tree for the tracks that have a lower chi2 when compared to other tracks from the event
+  TTree* worsechi2tree  = new TTree("WorseChi2Tree", "Tracks With a Better Flash w/ other Flashes in the Event");
+  worsechi2tree->Branch("run",&run,"run/I");
+  worsechi2tree->Branch("subrun",&subrun,"subrun/I");
+  worsechi2tree->Branch("event",&event,"event/I");
+  worsechi2tree->Branch("track_num", &track_num, "track_num/I");
+  worsechi2tree->Branch("num_flashes_with_better_chi2", &num_flashes_with_better_chi2, "num_flashes_with_better_chi2/I");
 
   int event_idx;
   int track_idx;
   int num_of_tracks_with_better_chi2;
-
-  // Declare a tree for the cases in which a fake chi2 is better than the true chi2
-  TTree* betterfakechi2tree = new TTree( "FakeChi2", "Better Fake Chi2 Tree" );
-  betterfakechi2tree->Branch("event_idx", &event_idx, "event_idx/I");
-  betterfakechi2tree->Branch("track_idx", &track_idx, "track_idx/I");
-  betterfakechi2tree->Branch("chi2", &chi2, "chi2/F");
-  betterfakechi2tree->Branch("num_of_tracks_with_better_chi2", &num_of_tracks_with_better_chi2, "num_of_tracks_with_better_chi2/I");
-
-  // Declare the information that you need to make two histograms
-  TH1D* plot_of_pe_values_for_flash_hypothesis = new TH1D("flashhypopedist", "Flash Hypo PE Distr.", 32, 0, 32);
-  TH1D* plot_of_pe_values_for_data_flash       = new TH1D("dataflashpedist", "Truth Flash PE Distr.", 32, 0, 32);
+  int total_num_tracks;
 
   // Declare the canvas up here.
   TCanvas *c = new TCanvas("c","c",600.600);
@@ -294,18 +228,11 @@ int main( int nargs, char** argv ) {
   // GeneralFlashMatchAlgo object.  This will be used below to find a flash hypothesis for tracks.       
   larlitecv::GeneralFlashMatchAlgo flash_match_obj( flash_match_algo_config_pset );
 
-  // FlashMuonTaggerAlgo functions.
-  larlitecv::FlashMuonTaggerAlgo anode_flash_tagger(   larlitecv::FlashMuonTaggerAlgo::kAnode );
-  larlitecv::FlashMuonTaggerAlgo cathode_flash_tagger( larlitecv::FlashMuonTaggerAlgo::kCathode );
-
-  // Make an object of type 'FlashMuonTaggerAlgoConfig' and configure it with the default values.
-  larcv::PSet flash_tagger_pset = pset.get<larcv::PSet>("BMTFlashTagger");
-  larlitecv::FlashMuonTaggerAlgoConfig flash_tagger_config = larlitecv::MakeFlashMuonTaggerAlgoConfigFromPSet( flash_tagger_pset );
-
-  // Configure the two objects of type 'FlashMuonTaggerAlgo' above.
-  anode_flash_tagger.configure( flash_tagger_config );
-  cathode_flash_tagger.configure( flash_tagger_config );
-
+  // Set up a PSet for the MCQCluster functionality as well.
+  // Declare the name for the object of type 'MCQCluster'.                                                                                                                                              
+  flashana::MCQCluster MCQCluster_object("MCQCluster");
+  
+  flashana::QLLMatch* QLLMatch_obj = ::flashana::QLLMatch::GetME();
 
   // -----------------------------------------------------------------------------------------
 
@@ -332,11 +259,14 @@ int main( int nargs, char** argv ) {
   
   // Set 'event_idx'.
   event_idx = 0;
+
+  // Declare a vector for the number of times that you have looked at a good chi2 track.                                                                                                                
+  int num_of_good_chi2_tracks = 0;
   
   for (int ientry=startentry; ientry<endentry; ientry++) {
 
-    // Break after the first event.
-    if (ientry > 10) break;
+    // Break after the tenth event.
+    //if (ientry > 10) break;
 
     // load the entry
     dataco[kCROIfile].goto_entry(ientry,"larcv");
@@ -360,26 +290,7 @@ int main( int nargs, char** argv ) {
     ntracks_recod_2planeq = 0;
     ntracks_all = 0;
     ntracks_recod_all = 0;
-    
-    // for (int p=0; p<4; p++) {
-    //   ncosmic_pixels[p] = 0;
-    //   nnu_pixels[0] = 0;
-    //   nvertex_pixels[p] = 0;
-    //   nthreshold_pixels[p] = 0;
-    //   nnu_inroi[p] = 0;
-    //   nvertex_badch[p] = 0;
-    //   for (int istage=0; istage<kNumStages; istage++) {
-    // 	ncosmic_tagged[istage][p] = 0;
-    // 	ncosmic_tagged_once[istage][p] = 0;
-    // 	ncosmic_tagged_many[istage][p] = 0;
-    // 	nnu_tagged[istage][p] = 0;
-    // 	nvertex_tagged[istage][p] = 0;
-    //   }
-    //   nvertex_incroi[p] = 0;
-    // }
-    // vertex_in_croi = 0;    
-
-
+ 
     // ok now to do damage
 
     // get the original, segmentation, and tagged images
@@ -400,40 +311,7 @@ int main( int nargs, char** argv ) {
       ev_badch = new larcv::EventImage2D;
       ev_badch->Emplace( std::move(chstatus_img_v) );
     }
-    
-    // // get the output of the tagger
-    // larcv::EventPixel2D* ev_pix[kNumStages] = {0};
-    // larlite::event_track* ev_track[kNumStages] = {0};
-    // try {
-    //   ev_pix[kThruMu]    = (larcv::EventPixel2D*)dataco[kCROIfile].get_larcv_data(larcv::kProductPixel2D,stages_pixel_producers[kThruMu]);
-    //   ev_track[kThruMu]  = (larlite::event_track*)dataco[kCROIfile].get_larlite_data(larlite::data::kTrack,stages_track_producers[kThruMu]);      
-    // }
-    // catch (...) {
-    //   ev_pix[kThruMu] = NULL;
-    //   ev_track[kThruMu] = NULL;
-    // }
-    // try {
-    //   ev_pix[kStopMu]    = (larcv::EventPixel2D*)dataco[kCROIfile].get_larcv_data(larcv::kProductPixel2D,stages_pixel_producers[kStopMu]);
-    //   ev_track[kStopMu]  = (larlite::event_track*)dataco[kCROIfile].get_larlite_data(larlite::data::kTrack,stages_track_producers[kStopMu]);            
-    // }
-    // catch (...) {
-    //   ev_pix[kStopMu] = NULL;
-    // }
-    // try {
-    //   ev_pix[kUntagged]  = (larcv::EventPixel2D*)dataco[kCROIfile].get_larcv_data(larcv::kProductPixel2D,stages_pixel_producers[kUntagged]);
-    //   ev_track[kUntagged]  = (larlite::event_track*)dataco[kCROIfile].get_larlite_data(larlite::data::kTrack,stages_track_producers[kUntagged]);                  
-    // }
-    // catch (...) {
-    //   ev_pix[kUntagged] = NULL;
-    // }
-    // try {
-    //   ev_pix[kCROI]      = (larcv::EventPixel2D*)dataco[kCROIfile].get_larcv_data(larcv::kProductPixel2D,stages_pixel_producers[kCROI]);
-    //   ev_track[kCROI]  = (larlite::event_track*)dataco[kCROIfile].get_larlite_data(larlite::data::kTrack,stages_track_producers[kCROI]);                  
-    // }
-    // catch (...) {
-    //   ev_pix[kCROI] = NULL;
-    // }
-
+ 
     const std::vector<larcv::Image2D>& imgs_v   = ev_imgs->Image2DArray();
     const std::vector<larcv::Image2D>& badch_v  = ev_badch->Image2DArray();
     const std::vector<larcv::Image2D>* segs_v   = NULL;
@@ -450,26 +328,8 @@ int main( int nargs, char** argv ) {
       }
     }
 #endif
+
     
-    // // get the result of the contained ROI analysis
-    // larcv::EventROI* ev_contained_roi = NULL;
-    // try {
-    //   ev_contained_roi = (larcv::EventROI*)dataco[kCROIfile].get_larcv_data(larcv::kProductROI,"croi");
-    // }
-    // catch (...) {
-    //   ev_contained_roi = NULL;
-    // }
-    // std::vector<larcv::ROI> containedrois_v;
-    // if ( ev_contained_roi ) {
-    //   containedrois_v = ev_contained_roi->ROIArray();
-    //   num_rois = (int)containedrois_v.size();
-    //   std::cout << "====ROIs===========================" << std::endl;
-    //   for ( auto& roi : containedrois_v ) {
-    // 	std::cout << " roi: " << roi.dump();
-    //   }
-    //   std::cout << "===================================" << std::endl;
-    // }
-      
     // get the boundary end point info (only if have MC info to compare against)
     std::vector<larcv::EventPixel2D*> ev_spacepoints(7,0);
     std::string spacepoint_producers[7] = { "topspacepts", "botspacepts", "upspacepts", "downspacepts", "anodepts", "cathodepts", "imgendpts" };
@@ -511,13 +371,17 @@ int main( int nargs, char** argv ) {
 
     // quantities filled if MC present
     std::vector<larcv::Image2D> nupix_imgs_v;
-    // std::vector< std::vector<int> > start_pixels;
-    // std::vector< std::vector<float> > start_crossingpts;
-    // std::vector< std::vector<int> > end_pixels;
-    // std::vector< std::vector<float> > end_crossingpts;
     std::vector<int> vertex_col(3,-1);
     std::vector<double> vtx_sce(3,0);
     int vertex_row = -1;
+
+    // Declare a vector of all the reconstructed endpoints for the tracks.
+    std::vector < larlitecv::BoundarySpacePoint > mctrack_endpts_all_tracks;
+    mctrack_endpts_all_tracks.clear();
+
+    // Vector for 'mctrack' indices.
+    std::vector < int > mctrack_idx_v;
+    mctrack_idx_v.clear();
 
     if ( ismc ) {
 
@@ -544,6 +408,7 @@ int main( int nargs, char** argv ) {
 	  continue;
 	}
 	std::vector< const larlitecv::BoundarySpacePoint* > mctrack_endpts;
+	
 	int start_index = -1;
 	int end_index = -1;
 	if ( nendpts>0 )
@@ -552,30 +417,70 @@ int main( int nargs, char** argv ) {
 	  end_index = xingptdata.mctrack_imgendpoint_indices[itrack][1];
 	larlitecv::BoundarySpacePoint* pstartpt = NULL;
 	larlitecv::BoundarySpacePoint* pendpt   = NULL;
+	int start_nplanes_wcharge = 0;
+	int end_nplanes_wcharge   = 0;	
 	if (  start_index!=-1 ) {
 	  // make a boundary space point object for the start;
+
+	  // get truth crossingpt info
+	  const larlitecv::TruthCrossingPointAna_t& truthxing = xingptdata.truthcrossingptinfo_v[start_index];
+	  start_nplanes_wcharge = truthxing.nplanes_w_charge;
+	  
 	  std::vector< larlitecv::BoundaryEndPt > planepts;
+	  int row = truthxing.imgcoord[0];
+	  if (row<0 || row>=imgs_v.front().meta().rows()) {
+	    std::cout << "BAD START POINT: (" << truthxing.imgcoord[0] << "," << truthxing.imgcoord[1] << "," << truthxing.imgcoord[2] << "," << truthxing.imgcoord[3] << ")" << std::endl;
+	    continue;
+	  }
+	  bool goodpt = true;
 	  for (int p=0; p<3; p++) {
-	    int row = xingptdata.start_pixels[start_index][0];
-	    int col = xingptdata.start_pixels[start_index][p+1];
-	    if ( col<0 ) col = 0; // hack
-	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)xingptdata.start_type[start_index] );
+	    int col = truthxing.imgcoord[p+1];
+	    if ( col<0 || col>=imgs_v.front().meta().cols() ) {
+	      std::cout << "BAD START POINT: (" << truthxing.imgcoord[0] << "," << truthxing.imgcoord[1] << "," << truthxing.imgcoord[2] << "," << truthxing.imgcoord[3] << ")" << std::endl;
+	      goodpt = false;
+	      break;
+	    }
+	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)truthxing.type );
 	    planepts.emplace_back( std::move(planept) );
 	  }
-	  pstartpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)xingptdata.start_type[start_index], std::move(planepts), imgs_v.front().meta() );
+	  if ( !goodpt )
+	    continue;
+	  // make the boundary spacepoint
+	  pstartpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)truthxing.type, std::move(planepts), imgs_v.front().meta() );
 	  mctrack_endpts.push_back( pstartpt );
 	}
 	if ( end_index!=-1 ) {
 	  // make a boundary space point object for the end;
+
+	  // get truth crossing information
+	  const larlitecv::TruthCrossingPointAna_t& truthxing = xingptdata.truthcrossingptinfo_v[end_index];
+	  end_nplanes_wcharge = truthxing.nplanes_w_charge;	  
+	  
 	  std::vector< larlitecv::BoundaryEndPt > planepts;
+	  int row = truthxing.imgcoord[0];
+	  if (row<0 || row>=imgs_v.front().meta().rows()) {
+	    std::cout << "BAD END POINT: (" << truthxing.imgcoord[0] << "," << truthxing.imgcoord[1] << "," << truthxing.imgcoord[2] << "," << truthxing.imgcoord[3] << ")" << std::endl;
+	    // need to cleanup start point
+	    if ( pstartpt )
+	      delete pstartpt;
+	    continue;
+	  }
+	  bool goodpt = true;
 	  for (int p=0; p<3; p++) {
-	    int row=xingptdata.end_pixels[end_index][0];
-	    int col=xingptdata.end_pixels[end_index][p+1];
-	    if ( col<0 ) col = 0;
-	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)xingptdata.end_type[end_index] );
+	    int col = truthxing.imgcoord[p+1];
+	    if ( col<0 || col>=imgs_v.front().meta().cols() ) {
+	      std::cout << "BAD END POINT: (" << truthxing.imgcoord[0] << "," << truthxing.imgcoord[1] << "," << truthxing.imgcoord[2] << "," << truthxing.imgcoord[3] << ")" << std::endl;
+	      goodpt = false;
+	      break;
+	    }
+	    larlitecv::BoundaryEndPt planept( row, col, (larlitecv::BoundaryEnd_t)truthxing.type );
 	    planepts.emplace_back( std::move(planept) );
 	  }
-	  pendpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)xingptdata.end_type[end_index], std::move(planepts), imgs_v.front().meta() );
+	  if ( !goodpt ) {
+	    delete pstartpt;
+	    continue;
+	  }
+	  pendpt = new larlitecv::BoundarySpacePoint( (larlitecv::BoundaryEnd_t)truthxing.type, std::move(planepts), imgs_v.front().meta() );
 	  mctrack_endpts.push_back( pendpt );
 	}
 	std::cout << " startidx=" << start_index << " endidx=" << end_index << " ";
@@ -591,24 +496,37 @@ int main( int nargs, char** argv ) {
 	if ( start_index>=0 && end_index>=0 ) {
 	  std::cout << " start=(" << mctrack_endpts[0]->at(0).row << "," << mctrack_endpts[0]->at(0).col << "," << mctrack_endpts[0]->at(1).col << "," << mctrack_endpts[0]->at(2).col << ")";
 	  std::cout << " end(" << mctrack_endpts[1]->at(0).row << "," << mctrack_endpts[1]->at(0).col << "," << mctrack_endpts[1]->at(1).col << "," << mctrack_endpts[1]->at(2).col << ")";
+	  std::cout << " nplanes_qcharge[ start=" << start_nplanes_wcharge << " end=" << end_nplanes_wcharge << "]" << std::endl;
 	  ntracks_all++;
-	  if ( xingptdata.start_crossing_nplanes_w_charge[start_index]>=2 && xingptdata.end_crossing_nplanes_w_charge[end_index]>=2)
+	  if ( start_nplanes_wcharge>=2 && end_nplanes_wcharge>=2)
 	    ntracks_2planeq++;
 	  try {
 	    thrumualgo.makeTrackClusters3D( imgs_v, badch_v, mctrack_endpts, trackclusters, tagged_v, used_endpoints_indices );
 	    if ( trackclusters.size()>0 ) {
 	      // successful reco returned!
 	      ntracks_recod_all++;
-	      if ( xingptdata.start_crossing_nplanes_w_charge[start_index]>=2 && xingptdata.end_crossing_nplanes_w_charge[end_index]>=2)
+	      if ( start_nplanes_wcharge>=2 && end_nplanes_wcharge>=2)
 		ntracks_recod_2planeq++;
+	      
+	      // Append the endpoints onto the 'mctrack_endpts_all_tracks' by using the information in 'trackclusters.at(0)'.
+	      larlitecv::BoundarySpacePoint start_endpt_mctrack = trackclusters.at(0).start_endpts;
+	      larlitecv::BoundarySpacePoint end_endpt_mctrack = trackclusters.at(0).end_endpts;
+              mctrack_endpts_all_tracks.push_back(start_endpt_mctrack);
+              mctrack_endpts_all_tracks.push_back(end_endpt_mctrack);
 	      mc_recotracks.emplace_back( std::move(trackclusters.at(0)) );
 	      mc_recotracks_truthindex.push_back( itrack );
+
+	      // Append all of the information for the track endpoints at this point in the algorithm.
+	      // Append the information for the two endpoints to 'mctrack_endpts_all_tracks' in a loop.
+	      //for ( size_t endpt_iter = 0; endpt_iter < mctrack_endpts.size(); endpt_iter++ ) {
+	      //mctrack_endpts_all_tracks.push_back( mctrack_endpts[endpt_iter] );
+	      //}
 
 	      // get its flash
 	      const std::vector<int>& endpoint_indices = xingptdata.mctrack_imgendpoint_indices[itrack];	      
 	      int flashindex = -1;
 	      if ( endpoint_indices.size()>0 && endpoint_indices[0]!=-1 ) {
-		flashindex = xingptdata.start_crossing_flashindex[ endpoint_indices[0] ];
+		flashindex = xingptdata.truthcrossingptinfo_v[ endpoint_indices[0] ].flashindex;
 	      }
 
 	      const larlite::opflash* popflash = NULL;
@@ -622,7 +540,8 @@ int main( int nargs, char** argv ) {
 		  nflash += (int)evflash_v->size();
 		}
 	      }
-
+	      
+	      mctrack_idx_v.push_back( itrack );
 	      truth_flash_ptrs.push_back( popflash );
 	    }
 	  }
@@ -631,79 +550,130 @@ int main( int nargs, char** argv ) {
 	    std::cout << "  ThruMu Failed: " << e.what() << std::endl;
 	  }
 	}
+
+	// we have to delete the end points as we used new
+	for (int i=0; i<(int)mctrack_endpts.size(); i++) {
+	  delete mctrack_endpts[i];
+	  mctrack_endpts[i] = NULL;	  
+	}
 	mctrack_endpts.clear();
 
 	std::cout << "tracker return " << trackclusters.size() << " thrumu tracks" << std::endl;
 	
-	delete pstartpt;
-	delete pendpt;
 	std::cout << std::endl;
-      }//end of mctrack loop
-
-      // --------------------------------------------------------------------------------
-      // Compare Q sums between planes
-      for ( auto const& bmtrack : mc_recotracks ) {
-	std::vector<larlitecv::PixelQPt> trackq = larlitecv::getPixelQPts( bmtrack.path3d, imgs_v, badch_v, 5, 5.0, 0.3 );
-	for ( auto const& qpt : trackq )  {
-	  for (int p=0; p<3; p++) {
-	    plane_trackq[p] = qpt.getPlaneCharge()[p];
-	    float totpix = qpt.getGoodPixelsPerPlane()[p]+qpt.getBadPixelsPerPlane()[p];
-	    plane_goodpix[p] = qpt.getGoodPixelsPerPlane()[p];
-	    if ( totpix>0 )
-	      plane_goodfrac[p] = float(plane_goodpix[p])/totpix;
-	    else
-	      plane_goodfrac[p] = 0.0;
-	  }
-	  uv_trackqdiff = plane_trackq[0]-plane_trackq[1];
-	  uy_trackqdiff = plane_trackq[0]-plane_trackq[2];
-	  vy_trackqdiff = plane_trackq[1]-plane_trackq[2];
-	  ptqtree->Fill();
-	}
-	std::vector<double> total_track_q = larlitecv::getTrackTotalPixelCharge( bmtrack.path3d, imgs_v, badch_v, 5, 5.0, 0.3 );
-	for ( int p=0; p<3; p++) {
-	  plane_tracktotq[p] = total_track_q[p];
-	}
-	uv_totqdiff = plane_tracktotq[0]-plane_tracktotq[1];
-	uy_totqdiff = plane_tracktotq[0]-plane_tracktotq[2];
-	vy_totqdiff = plane_tracktotq[1]-plane_tracktotq[2];
-	trackqtree->Fill();
-      }//end of loop over MC reco tracks
-      // --------------------------------------------------------------------------------
+      } //end of mctrack loop
 
       // --------------------------------------------------------------------------------
       // Get Chi-2 of flash hypo from reco track and truth flash
 
-      // Declare the vectors needed for these functions.
-      std::vector < larlitecv::BoundarySpacePoint > anode_piercing_space_points;
-      std::vector < larlitecv::BoundarySpacePoint > cathode_piercing_space_points;
+      // Make the 'ev_mctrack' pointer into an 'ev_mctrack' object (to be used in the check here and in the normal method below).
 
-      std::vector < int >                anode_piercing_flash_idx;
-      std::vector < int >                cathode_piercing_flash_idx;
+      //larlite::event_mctrack ev_mctrack_val       = *ev_mctrack; // note from tmw. this is a copy. you can do the same thing
+      larlite::event_mcshower ev_mcs;
+      flashana::LightPath lightpath;
 
-      anode_piercing_space_points.clear();
-      cathode_piercing_space_points.clear();
-      anode_piercing_flash_idx.clear();
-      cathode_piercing_flash_idx.clear();
+      // Use the 'Configure' function with this object to convert the MCTrack objects into qclusters.
+      // This function is a void, so it just sets the input data types to the function.
+      // tmw note: you can derefence the pointer in the argument, which will pass by reference. no copy involved.
+      MCQCluster_object.Construct( *ev_mctrack, ev_mcs, lightpath );
 
-      // Find out what the denomination of these tracks is.
-      anode_flash_tagger.flashMatchTrackEnds(event_opflash_v, imgs_v, badch_v, anode_piercing_space_points, anode_piercing_flash_idx);
-      cathode_flash_tagger.flashMatchTrackEnds(event_opflash_v, imgs_v, badch_v, cathode_piercing_space_points, cathode_piercing_flash_idx);
-
-      // Compute the flash hypothesis for a larlite track.
-      // Convert each of the tracks into larlite tracks
-      std::vector < larlite::track > larlite_track_vec = flash_match_obj.generate_tracks_between_passes(mc_recotracks);
-      std::cout << "Length of the vector of larlite tracks = " << larlite_track_vec.size() << "." << std::endl;
-
+      // Extract the qclusters that are within 5 us of one of the flashes.
       std::vector < flashana::QCluster_t > qcluster_v;
       qcluster_v.clear();
-      qcluster_v = flash_match_obj.GenerateQCluster_vector(larlite_track_vec);
 
-      // Now, compare the length of this list to the length of the 'truth_flash_ptrs'.                                                                                                   
-      // Print out the event iterator.                                                                                                                                                                
-      std::cout << "The event iterator is currently at " << ientry << "." << std::endl;
-      std::cout << "The size of the qcluster vector = " << qcluster_v.size() << "." << std::endl;
-      std::cout << "The size of the truth_flash_ptrs vector = " << truth_flash_ptrs.size() <<   "." << std::endl;
+      qcluster_v = MCQCluster_object.QClusters();
 
+      std::cout << "The size of 'qcluster_v' = " << qcluster_v.size() << "." << std::endl;
+      std::cout << "The size of 'qcluster_v' = " << MCQCluster_object.QClusters().size() << "." << std::endl;      
+      std::cout << "The size of 'truth_flash_pointers' = " << truth_flash_ptrs.size() << "." << std::endl;
+
+      // Declare a new vector of truth_flash_pointers that only includes those that are matched to a QCluster.
+      std::vector< const larlite::opflash* > truth_flash_ptrs_parsed;
+      truth_flash_ptrs_parsed.clear();
+
+      // Declare a vector of the indices of the 'truth_flash_ptrs_parsed' that have already been appended.
+      std::vector < int > truth_flash_ptrs_parsed_idx;
+      truth_flash_ptrs_parsed_idx.clear();
+
+      // Declare a new vector of qclusters that only includes those matched to a flash.
+      std::vector < flashana::QCluster_t > qcluster_v_parsed;
+      qcluster_v_parsed.clear();
+
+      // Declare a matching parameter.
+      double time_match = 5.0;
+
+      // Declare a counter for the number of null flashes that there are.
+      int num_null_flashes;
+      int num_times_in_flash_loop;
+
+      // Start a loop over the elements in 'qcluster_v' to compare them to the flashes contained in 'truth_flash_ptrs'.
+      // Check to see if the flash is NULL here instead of in the loop over the qclusters later.
+      for ( size_t i = 0; i < qcluster_v.size(); i++ ) {
+
+	// Declare a variable for if the qcluster has been matched yet.
+	bool already_matched = false;
+
+	// Declare a new qcluster for the qcluster at this location in 'qcluster_v'.                                                                                                                      
+	const flashana::QCluster_t qcluster             = qcluster_v.at(i);
+
+	num_times_in_flash_loop = 0;
+	num_null_flashes        = 0;
+
+	for ( size_t j = 0; j < truth_flash_ptrs.size(); j++ ) {
+
+	  num_times_in_flash_loop++;
+
+	  //std::cout << "Starting a loop over the truth flash pointers." << std::endl;
+
+	  // Generate an individual flash pointer and an individual flash out of the information in 'truth_flash_ptrs.size()'.
+	  const larlite::opflash*    data_opflash_pointer = truth_flash_ptrs.at(j);
+	  // Moving the line to set this opflash object equal to a pointer to the point after it is checked to be null.
+
+	  // Continue if the flash is NULL.
+	  if (truth_flash_ptrs.at( j ) == NULL) {
+	    num_null_flashes++;
+	    continue;                                                                                                                                                                                      
+        }
+
+	  // Set the 'data_opflash' object here.
+	  const larlite::opflash     data_opflash         = *data_opflash_pointer;
+
+	  // Compare the time of 'qcluster' to the time of 'data_opflash'.  If they are within a matching parameter (say 5 us), then you can append them (in the case of the flash, the pointer) to the respective vectors.
+	  if ( fabs( qcluster.time - data_opflash.Time() ) < time_match ) {
+
+	    std::cout << "The time of these two objects match!!" << std::endl;
+	    std::cout << "qcluster.time = " << qcluster.time << "." << std::endl;
+	    std::cout << "data_opflash.Time() = " << data_opflash.Time() << "." << std::endl;
+	    std::cout << "\n" << std::endl;
+
+	    // Check to see if that 'truth_flash_pointer' has already been appended to the 'truth_flash_ptrs_parsed' list.
+	    for ( size_t redundancy_check = 0; redundancy_check < truth_flash_ptrs_parsed_idx.size(); redundancy_check++ ) {
+
+	      if ( j == truth_flash_ptrs_parsed_idx.at( redundancy_check ) )
+		continue;
+
+	    }
+	    
+	    // Append them to their respective vectors.
+	    qcluster_v_parsed.push_back( qcluster );
+	    truth_flash_ptrs_parsed.push_back ( data_opflash_pointer );
+	    truth_flash_ptrs_parsed_idx.push_back ( j );
+	    break;
+
+	  }
+
+	}
+
+      }
+
+      std::cout << "The number of entries in the original 'qcluster_v' vector = " << qcluster_v.size() << "." << std::endl;
+      std::cout << "The number of entries in the original 'truth_flash_ptrs' vector = " << truth_flash_ptrs.size() << "." << std::endl;
+      std::cout << "The number of null flashes = " << num_null_flashes << "." << std::endl;
+      
+      // Compare the size of 'qcluster_v' and the size of the truth flash pointers vector.
+      std::cout << "The size of qcluster_v_parsed = " << qcluster_v_parsed.size() << "." << std::endl;
+      std::cout << "The number of truth_flash_pointers_parsed = " << truth_flash_ptrs_parsed.size() << "." << std::endl;
+      
       // Declare the number of cm/tick outside the loop.
       const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
       std::cout << "cm_per_tick:  "<< cm_per_tick << std::endl;
@@ -712,172 +682,155 @@ int main( int nargs, char** argv ) {
       // Set the value of 'track_idx'.
       track_idx = 0;
 
-      for ( size_t qcluster_iter = 0; qcluster_iter < qcluster_v.size(); qcluster_iter++ ) {
-	
-	// Set an object equal to 'truth_flash_ptr' at position 'qcluster_iter'.
-	const larlite::opflash* data_opflash_pointer = truth_flash_ptrs.at(qcluster_iter);
+      for ( size_t qcluster_iter = 0; qcluster_iter <  qcluster_v_parsed.size(); qcluster_iter++ ) {
 
-	// Continue if the flash pointer at this value is NULL
-	if (truth_flash_ptrs.at(qcluster_iter) == NULL) {
-          std::cout << "This vector is NULL!" << std::endl;
-          continue;
-        }
+	// Set to 0 the variables that must be plotted to find the new performance of the flash-matcher.
+	min_dchi2 = -1.;
+	track_num = 0;
+	num_flashes_with_better_chi2 = 0;
+
+	// Set an object equal to 'truth_flash_ptr' at position 'qcluster_iter'.
+	// I have to use 'mctrack_idx' here instead of 'qcluster_iter'.  This is predicated on the fact that the 'mctrack_idx_v' vector is filled in the same order as 'truth_flash_ptrs'.
+	const larlite::opflash* data_opflash_pointer = truth_flash_ptrs_parsed.at(qcluster_iter);
 
 	// If this is true, then find the object that the pointer points to.
 	const larlite::opflash  data_opflash         = *data_opflash_pointer;
 
-	
-	//********* Code for shifting the x-coordinate of the qcluster first.****************
+	// Convert the opflash object into a data flash.
+	flashana::Flash_t truth_flash = flash_match_obj.MakeDataFlash( data_opflash );
 
-	// Find the x-position of the opflash object that corresponds to this qcluster.
-	// Shift the coordinate by the time of the flash.
-	int flash_tick         = (3200.0+data_opflash.Time()/0.5);
+	// Convert the qcluster into a data flash.
+	flashana::Flash_t hypo_flash   = flash_match_obj.GenerateUnfittedFlashHypothesis( qcluster_v_parsed.at(qcluster_iter) );
 
-	// Convert the tick to a time.
-	double flash_position  = (flash_tick-3200.0)*cm_per_tick;
+	chi2 = QLLMatch_obj->QLL( hypo_flash, truth_flash );
 
-	// Loop through this value of the qcluster and correct each of the points.
-	std::cout << "Adjusting x-position of track #" << qcluster_iter << " flash_x=" << flash_position << " flash_tick=" << flash_tick << std::endl;
-	for ( size_t qcluster_point_iter = 0; qcluster_point_iter < qcluster_v.at(qcluster_iter).size(); qcluster_point_iter++ ) {
+	// Print out the chi2 value down here now.
+	std::cout << "The chi2 value = " << chi2 << "." << std::endl;
 
-	  // Find the x-coordinate of the first point.
-	  std::cout << "  x: " << qcluster_v.at(qcluster_iter).at(qcluster_point_iter).x;
-	  qcluster_v.at(qcluster_iter).at(qcluster_point_iter).x -= flash_position;
-	  std::cout << " --> (" << qcluster_v.at(qcluster_iter).at(qcluster_point_iter).x << ","
-		    << qcluster_v.at(qcluster_iter).at(qcluster_point_iter).y << ","
-		    << qcluster_v.at(qcluster_iter).at(qcluster_point_iter).z << ")"
-		    << std::endl;
-	  //std::cout << "Correcting the x-position of the qcluster coordinate." << std::endl;
+	// Plot the hypothesis flash information and the truth flash information on the same set of axes.
+	if ( chi2 < 3.5 && num_of_good_chi2_tracks < 20)  {
 
-	}
+	  std::cout << "Making an image of the PEs inside the PMTs." << std::endl;
+	  
+	  TCanvas *c     = new TCanvas;
+          TH1F    *data  = new TH1F("dataflash", Form("chi2 = %f", chi2), 32, 0, 32);
+          TH1F    *hypo  = new TH1F("hypoflash", Form("chi2 = %f", chi2), 32, 0, 32);
 
-	 //********* End Code for shifting the x-coordinate of the qcluster first.****************
+          float max_data_plot = -1.0;
+          float max_hypo_plot = -1.0;
 
-	std::cout << "Compare aginst truth" << std::endl;
-	auto const& amctrack = ev_mctrack->at( mc_recotracks_truthindex[qcluster_iter] );
-	for (auto const& step : amctrack ) {
-	  std::cout << "  (" << step.X() << "," << step.Y() << "," << step.Z() << ")" << std::endl;
-	}
-	
-	std::cout << "[enter] to continue" << std::endl;
-	std::cin.get();
-	
-	track_idx++;
-	
-	float total_pe = 0.0;
+	  unsigned int opdet = 0;
+	  
+          // Fill the histograms in a loop over the optical detectors.
+	  for ( unsigned int opch = 0; opch < 32; opch++ ) {
 
-	for ( size_t iter = 0; iter < (geo->NOpDets()); iter++ ) {
-	  total_pe += data_opflash.PE(iter);
-	}
-	
-	// Continue if 'total_pe' is less than 10.
-	if (total_pe < 10.0) {
-	  std::cout << "The flash has less than 10.0 PEs total in all of the phototubes!!" << std::endl;
-	  continue;
-	}
+	    // Convert the opch into an opdet.
+	    opdet = geo->OpDetFromOpChannel(opch); 
+	    
+            data->SetBinContent( opdet, truth_flash.pe_v[opdet] );
+            hypo->SetBinContent( opdet, hypo_flash.pe_v[opdet] ); // Do not multiply by the fudge factor with this hypothesis!!
 
-	// Calculate the chi2 value
-	chi2 = flash_match_obj.generate_chi2_in_track_flash_comparison( qcluster_v.at(qcluster_iter), data_opflash ); // *truth_flash_ptrs.at(qcluster_iter) );
-	std::cout << "The chi2 match for this track = " << chi2 << "." << std::endl;
-	std::cout << "qcluster iter = " << qcluster_iter << "." << std::endl;
+            // Find the max in the two plots.                                                                                                                                                        
+            if ( max_data_plot < truth_flash.pe_v[opdet] || max_data_plot < 0. )
+              max_data_plot = truth_flash.pe_v[opdet];
 
-	// Only do this on a track-by-track-basis. Start with the first track of the first event.
-	if (event_idx == 0 && qcluster_iter == 2) {
-	  std::cout << "The previous set of PE information is being used to fill the histogram!!" << std::endl;
-	  // For both the data and the truth, plot the number of PEs in each phototube in the detector.
-	  // Convert both of them to data flashes first.
-          flashana::Flash_t flash_hypothesis_flasht = flash_match_obj.GenerateUnfittedFlashHypothesis(qcluster_v.at(qcluster_iter));
-	  flashana::Flash_t truth_flash_flasht      = flash_match_obj.MakeDataFlash(data_opflash);
 
-	  // Fill each bin with the number of photelectrons in that optical detector.
-	  for (size_t op_iter = 0; op_iter < (geo->NOpDets()); op_iter++) {
-	    // Multiplying by the 'fudge' factor in the first entry.
-	    plot_of_pe_values_for_flash_hypothesis->SetBinContent( op_iter, flash_hypothesis_flasht.pe_v[op_iter]*33333.0);
-	    plot_of_pe_values_for_data_flash->SetBinContent( op_iter, truth_flash_flasht.pe_v[op_iter] );
+	    if ( max_hypo_plot < hypo_flash.pe_v[opdet] || max_hypo_plot < 0. ) // Do not multiply by the fudge factor with this hypothesis!!
+	      max_hypo_plot = hypo_flash.pe_v[opdet]; // Do not multiply by the fudge factor with this hypothesis!!
 
-	    // Print out the pe values in each of the channels.
-	    std::cout << "The number of PEs in the flash hypothesis in optical detector #" << op_iter << " = " << flash_hypothesis_flasht.pe_v[op_iter]*33333.0 << "." << std::endl;
-	    //std::cout << "The number of PEs in the data flash in optical detector #" << op_iter << " = " << truth_flash_flasht.pe_v[op_iter] << "." << std::endl;
 	  }
 
-	}
+	  // Draw the two histograms on the same axes.
+	  c->cd();
+	  data->SetLineColor(kBlue);
+	  hypo->SetLineColor(kRed);
 
-	// // Declare a canvas and write the two functions to it in order to overlay them.
-	// c->cd();
-	// plot_of_pe_values_for_flash_hypothesis->Draw();
-	// plot_of_pe_values_for_data_flash->Draw("same");
+	  if ( max_data_plot > max_hypo_plot ) {
+	    // Draw both of the histograms on c.
+	    data->Draw();
+	    hypo->Draw("Sames");
+	  }
 
-	
-	// Find which other flash has the minimum chi2 value with the true flash.
-	float dchi2                    = 0.0;
-	min_dchi2                      = -1.0;
-	num_of_tracks_with_better_chi2 = 0;
-	float dchi2_fake_chi2_better_value = 0.0;
-
-	// Start a loop over all of the flashes in the event to find which of the fake flashes has closest chi2 to the true flash.
-	for ( size_t fake_iter = 0; fake_iter < qcluster_v.size(); fake_iter++ ) {
-
-	  // Continue if 'fake_iter' and 'qcluster_iter' have the same value.
-	  if ( fake_iter == qcluster_iter ) continue;
-
-	  // Declare 'data_opflash_pointer_fake up here'.
-	  const larlite::opflash* data_opflash_pointer_fake = NULL;
-
-          data_opflash_pointer_fake = truth_flash_ptrs.at( fake_iter );
-
-	  // Continue if the flash pointer at this value is NULL.                                                                                                                              
-	  if (data_opflash_pointer_fake == NULL) {
-	    //std::cout << "This vector is NULL!" << std::endl;
-	    continue;
+	  if ( max_data_plot < max_hypo_plot ) {
+	    hypo->Draw();
+	    data->Draw("Sames");
 	  }
 	  
-	  // Once that value is not fake, load it into an opflash object and calculate the fake chi2 value.
-	  const larlite::opflash   data_opflash_fake          = *data_opflash_pointer_fake;
-	  const float              fake_chi2                  = flash_match_obj.generate_chi2_in_track_flash_comparison( qcluster_v.at(qcluster_iter), data_opflash_fake );
+	  // Save the canvas as an image.
+	  TImage *img = TImage::Create();
+	  
+	  img->FromPad(c);
+	  
+	  img->WriteImage(Form("output_png_images_hypo_truth_comparison/optimal_chi2_hypo_truth_comparison_%d.png",num_of_good_chi2_tracks));
 
-	  // These truth/hypothesis flash tracks somehow
-	  if (std::abs(chi2 - fake_chi2) < 0.0001) {
-	    std::cout << "fake iter = " << fake_iter << std::endl;
-	    continue;
+	  // Increment 'good_chi2_tracks_plotted'.
+	  num_of_good_chi2_tracks++;
+
+	  std::cout << "The number of good chi2 tracks after making the last image = " << num_of_good_chi2_tracks << "." << std::endl;
+
+          // Delete the root infrastructure that you used in this loop.
+	  delete c;
+          delete data;
+          delete hypo;
+          delete img;
+
+        }
+
+	// Loop through the other flashes in the event to see if another one has a better chi2 match with 
+	float fake_chi2 = 0.0;
+
+	// Set 'track_num' equal to 'track_idx'.
+	track_num = track_idx;
+
+	for ( size_t fake_flash_iter = 0; fake_flash_iter < truth_flash_ptrs_parsed.size(); fake_flash_iter++ ) {
+
+	  // Continue if the flash is the same as the true flash - would produce the same chi2 value as before.
+	  if ( fake_flash_iter == qcluster_iter ) continue;
+
+	  const larlite::opflash* fake_opflash_pointer = truth_flash_ptrs_parsed.at(fake_flash_iter);
+	  const larlite::opflash  fake_opflash         = *fake_opflash_pointer;
+
+	  // Turn the fake opflash into a data flash.
+	  flashana::Flash_t fake_flash = flash_match_obj.MakeDataFlash( fake_opflash );
+	
+	  fake_chi2   = QLLMatch_obj->QLL( hypo_flash, fake_flash );
+
+	  // Print out the fake chi2 value.
+	  std::cout << "The fake chi2 value = " << fake_chi2 << "." << std::endl;
+
+	  // Compare 'fake_chi2' and 'chi2'.
+	  if ( fake_chi2 < chi2 ) {
+
+	    num_flashes_with_better_chi2++;
+
+	    std::cout << "A better chi2 match is found with flash # " << fake_flash_iter << "." << std::endl;
+
 	  }
 
-	  // Calculate the difference between this chi2 value and the fake value.
-	  dchi2_fake_chi2_better_value = chi2 - fake_chi2;
-	  dchi2                        = std::abs(chi2 - fake_chi2);
+	  if ( chi2 < fake_chi2 || chi2 == fake_chi2 ) {
 
-	  // Reset the value of min_dchi2 if it is greater than dchi2
-	  if (dchi2 < min_dchi2 || min_dchi2 < 0.0)
-	    min_dchi2 = dchi2;
-	  
-	  // If 'dchi2_fake_chi2_better_value' is negative, then fill the 'betterfakechi2' tree.
-	  if (dchi2_fake_chi2_better_value > 0.0) {
-	    std::cout << "The better chi2 value for the flash from the false flash = " << fake_chi2 << "." << std::endl;
-	    num_of_tracks_with_better_chi2++;
-	    //betterfakechi2tree->Fill();
+	    if ( fabs( fake_chi2 - chi2 ) < min_dchi2 || min_dchi2 < 0. ) 
+	      min_dchi2 = fabs( fake_chi2 - chi2 );
+
 	  }
 
 	}
 
-	// Print out the value of 'min_dchi2'.
-	std::cout << "The value of min_dchi2 for this track = " << min_dchi2 << "." << std::endl;
-	std::cout << "\n" << std::endl;
-	
-	// Fill 'flashmatchtree'.
-	if (num_of_tracks_with_better_chi2 == 0)
+	// Fill the tree based on the value of 'num_flashes_with_better_chi2'.  If it is == 0, then fill 'flashmatchtree'.  If it is greater than 1, then fill 'worsechi2tree'.
+	if ( num_flashes_with_better_chi2 == 0 ) 
 	  flashmatchtree->Fill();
-	// Fill 'betterfakechi2tree'.
-	else if (num_of_tracks_with_better_chi2 > 0)
-	  betterfakechi2tree->Fill();
-	
-	// Increment 'track_idx'.
-	//track_idx++;
-      }
+
+	if ( num_flashes_with_better_chi2 > 0 )
+	  worsechi2tree->Fill();
+
+	// Fill 'totalchi2tree'.
+	totalchi2tree->Fill();
+       
+	// Increment 'track_idx'.  This variable is set equal to 'track_num'.
+	track_idx++;
+
+      } // End of the loop over qclusters.
     
-      //int ibmtrack=-1;
-      //for ( auto const& bmtrack : mc_recotracks ) {
-      //	ibmtrack++;
-      //	const larlite::opflash* popflash = truth_flash_ptrs[ibmtrack];
-      //	const std::vector<std::vector<double> >& path3d = bmtrack.path3d;
 
 	// CHRIS' CODE GOES HERE
       // --------------------------------------------------------------------------------
@@ -885,36 +838,32 @@ int main( int nargs, char** argv ) {
       // --------------------------------------------------------------------------------
       // OPEN CV VISUALIZATION
 #ifdef USE_OPENCV
-      // draw start points
-      for ( int ipt=0; ipt<(int)xingptdata.start_pixels.size(); ipt++) {
-	int row=xingptdata.start_pixels[ipt][0];
+      // draw crossing points
+      for ( int ipt=0; ipt<(int)xingptdata.truthcrossingptinfo_v.size(); ipt++) {
+	
+	const larlitecv::TruthCrossingPointAna_t& truthxing = xingptdata.truthcrossingptinfo_v[ipt];
+	
+	// color of marker depends on end point
+	cv::Scalar markercolor(0,0,0,0);
+	if ( truthxing.start_or_end==0 )
+	  markercolor = cv::Scalar(0,0,255,255);
+	else
+	  markercolor = cv::Scalar(255,0,0,255);
+	
+	int row=truthxing.imgcoord[0];
 	if (row<0) row = 0;
 	if (row>=(int)imgs_v.front().meta().rows() ) row = (int)imgs_v.front().meta().rows()-1;
 	for (int p=0; p<3; p++) {
-	  int col = xingptdata.start_pixels[ipt][p+1];
+	  int col = truthxing.imgcoord[p+1];
 	  if ( col<0 ) col = 0;
 	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
 	  int radius = -1;
-	  if ( xingptdata.start_crossing_nplanes_w_charge[ipt]<=1 )
+	  if ( truthxing.nplanes_w_charge<=1 )
 	    radius = 1;
-	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 0, 0, 255, 255 ), radius );
+	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, markercolor, radius );
 	}
       }
-      // draw end points
-      for ( int ipt=0; ipt<(int)xingptdata.end_pixels.size(); ipt++) {
-	int row=xingptdata.end_pixels[ipt][0];
-	if (row<0) row = 0;
-	if (row>=(int)imgs_v.front().meta().rows() ) row = (int)imgs_v.front().meta().rows()-1;
-	for (int p=0; p<3; p++) {
-	  int col = xingptdata.end_pixels[ipt][p+1];
-	  if ( col<0 ) col = 0;
-	  if ( col>=(int)imgs_v.front().meta().cols() ) col = imgs_v.front().meta().cols()-1;
-	  int radius = -1;
-	  if ( xingptdata.end_crossing_nplanes_w_charge[ipt]<=1 )
-	    radius = 1;
-	  cv::circle( cvimgs_v[p], cv::Point(col,row), 6, cv::Scalar( 255, 0, 0, 255 ), radius );
-	}
-      }
+
       // draw tracks      
       for (auto const& track : mc_recotracks ) {
 	std::vector<larcv::Pixel2DCluster> plane_pixels = larlitecv::getTrackPixelsFromImages( track.path3d,  imgs_v, badch_v, label_thresholds_v, label_neighborhood, 0.3 );
@@ -942,15 +891,22 @@ int main( int nargs, char** argv ) {
     
 #endif
     
+
     tree->Fill();
 
     // Increment 'event_idx'.
     event_idx++;
 
-    break;
-  }//end of entry loop
+    // Increment 'total_num_tracks' by 'track_idx + 1'.
+    //total_num_tracks += track_idx + 1;
+    
+  } //end of entry loop
 
-
+  //std::cout << "The total number of tracks in this sample = " << total_num_tracks << "." << std::endl;
+  //std::cout << "The number of tracks with a better chi2 than the original = " << num_tracks_better_new_chi2 << "." << std::endl;
+  //std::cout << "The number of tracks with a worse chi2 than the original = " << num_tracks_worse_new_chi2 << "." << std::endl;
+  //std::cout << "The number of tracks with a better extended chi2 = " << num_tracks_better_extended_chi2 << std::endl;
+      
   rfile->Write();
   //
   return 0;

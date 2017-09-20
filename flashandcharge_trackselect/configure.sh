@@ -11,10 +11,10 @@ source $FQ_TAGGERDEV_BASEDIR/setup.sh
 source $FQ_TAGGERDEV_BASEDIR/larlite/config/setup.sh
 
 # setup laropencv
-#source $FQ_TAGGERDEV_BASEDIR/LArOpenCV/setup_laropencv.sh
+source $FQ_TAGGERDEV_BASEDIR/LArOpenCV/setup_laropencv.sh
 
 # setup Geo2D
-#source $FQ_TAGGERDEV_BASEDIR/Geo2D/config/setup.sh
+source $FQ_TAGGERDEV_BASEDIR/Geo2D/config/setup.sh
 
 # setup LArCV
 source $FQ_TAGGERDEV_BASEDIR/LArCV/configure.sh
