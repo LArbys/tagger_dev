@@ -38,7 +38,8 @@ namespace larlitecv {
 
     // make a seed cluster
     clock_t begin_seed = clock();
-    m_caca.makeDebugImage();
+    if ( fMakeDebugImage )
+      m_caca.makeDebugImage();
     larlitecv::ContourAStarCluster cluster = m_caca.makeSeedClustersFrom3DPoint( pt.pos(), img_v, plane_contours_v, -10 );
     clock_t end_seed = clock();
     m_stage_times[kSeedMaking] += float(end_seed-begin_seed)/CLOCKS_PER_SEC;
@@ -222,7 +223,6 @@ namespace larlitecv {
     int numreco_bad_in_contour = 0;    
     int numreco_good_tot = 0;
     int numreco_bad_tot  = 0;    
-    int ireco = -1;
     int numreco_good[7][2] = {0};
     int numreco_bad[7][2]  = {0};
 
@@ -260,10 +260,11 @@ namespace larlitecv {
     passes_filter.clear();
     m_past_info.clear();
 
+    int ireco = -1; // overall counter    
     for ( auto const& p_sp_v : sp_v ) {
       std::vector<int> passes_v(p_sp_v->size(),0);
 
-      int isp = -1;
+      int isp = -1; // this vector's counter
       for (auto const& sp : *p_sp_v ) {
 	ireco++; // counter for all spacepoint indices
 	isp++;   // counter for sp index of this vector
@@ -277,7 +278,10 @@ namespace larlitecv {
 	     || sp.type()==larlitecv::kUpstream
 	     || sp.type()==larlitecv::kDownstream	     
 	     || sp.type()==larlitecv::kAnode
-	     || sp.type()==larlitecv::kCathode ) {
+	     || sp.type()==larlitecv::kCathode
+	     || sp.type()==larlitecv::kImageEnd
+	     ) {
+	  // debug select boundary type
 	//if ( sp.type()==larlitecv::kAnode ) {
 	  
 	  clearClusters();
@@ -326,7 +330,9 @@ namespace larlitecv {
 	  const larlitecv::RecoCrossingPointAna_t* recoinfo   = NULL;
 	  const larlitecv::TruthCrossingPointAna_t* truthinfo = NULL;
 	  bool truthmatched = false;
-	  
+
+	  // --------------------------------------------------------------------------
+	  // Performance Analysis using truth information
 	  if ( fTruthInfoLoaded ) {
 
 	    try {
@@ -399,6 +405,7 @@ namespace larlitecv {
 	      
 	    }//end of if non-matched reco point	    
 	  }// if truth loaded
+	  // end of truth analysis -----------------------------------------------------------------------------------
 
 	  
 	  if ( fMakeDebugImage ) {
@@ -408,8 +415,11 @@ namespace larlitecv {
 	    // contours
 	    larlitecv::ContourAStarCluster& astar_cluster = getLastCluster();
 	    
-	    // end point
+	    // end point from original boundary point
 	    std::vector<int> sp_imgcoords = larcv::UBWireTool::getProjectedImagePixel( sp.pos(), img_v.front().meta(), 3 );
+
+	    // end point from cluster
+	    // not yet implemented
 
 	    int img_index = 0;
 	    if ( fTruthInfoLoaded ) {
@@ -449,9 +459,6 @@ namespace larlitecv {
 	  }//end of if debug image
 	  
 	}//if correct type
-	else  {
-	  passes_v[isp] = 1;
-	}
 
       }//end of space points loop
       
@@ -525,12 +532,16 @@ namespace larlitecv {
   }
 
   void CACAEndPtFilter::printStageTimes() {
-    std::cout << "CACAEndPtFilter Timing----------" << std::endl;
+    std::cout << "==============================================" << std::endl;
+    std::cout << "CACAEndPtFilter Timing -----------------------" << std::endl;
     std::cout << "Overall: " << m_stage_times[kOverall] << std::endl;
     std::cout << "Seed making: " << m_stage_times[kSeedMaking] << std::endl;
     std::cout << "Duplicate eval: " << m_stage_times[kDuplicateEval] << std::endl;
     std::cout << "Cluster extension: " << m_stage_times[kClusterExtension] << std::endl;
     std::cout << "Debug Images: " << m_stage_times[kDebugImages] << std::endl;
+    m_caca.printStageTimes();
+    std::cout << "==============================================" << std::endl;
+    
   }
 
 }

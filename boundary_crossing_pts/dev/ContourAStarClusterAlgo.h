@@ -39,7 +39,8 @@ namespace larlitecv {
   public: // temporary for debug
     std::vector< std::set<int> > m_bmtcv_indices; //< store indices of contours we've used
     std::vector< std::vector< const ContourShapeMeta*> > m_plane_contours; //< contours we've added to the cluster
-    std::vector< larcv::Image2D > m_clusterimg_v; //< contains a binary image of our cluster (should be a cv::Mat)
+    std::vector< larcv::ImageMeta > m_meta_v;
+    //std::vector< larcv::Image2D > m_clusterimg_v; //< contains a binary image of our cluster (should be a cv::Mat)
     std::vector< cv::Mat > m_cvimg_v;  //< stores binary image of pixels that are a part of the cluster
     std::vector< cv::Mat > m_cvpath_v; //< stores binary image of pixels that are a part of the path
     cv::Mat m_cvimg_debug;
@@ -64,13 +65,16 @@ namespace larlitecv {
     bool getCluster3DPointAtTimeTick( const int row, const std::vector<larcv::Image2D>& img_v,
 				      const std::vector<larcv::Image2D>& badch_v, bool use_badch,
 				      std::vector<int>& imgcoords, std::vector<float>& pos3d );
+    //std::vector<float> getBoundaryEnd();
     
   };
   
   class ContourAStarClusterAlgo {
     
   public:
-    ContourAStarClusterAlgo() {};
+    ContourAStarClusterAlgo() {
+      m_stage_times.resize( kNumStages, 0.0 );
+    };
     virtual ~ContourAStarClusterAlgo() {};
 
     ContourAStarCluster buildClusterFromSeed( const std::vector<float>& pos3d, const std::vector<larcv::Image2D>& img_v,
@@ -102,9 +106,14 @@ namespace larlitecv {
 			     const float maxstepsize, const float tag_qthreshold, const int neighborhood );
 
     void makeDebugImage( bool make=true ) { fMakeDebugImage = make; };
-
+    void printStageTimes();
+    
   protected:
     bool fMakeDebugImage;
+    
+    enum { kContourLoop=0, kPointPolyTest, kImagePrep, kAddContours, kCreateCluster, kNumStages };
+    std::vector<float> m_stage_times;
+
     
     
   };

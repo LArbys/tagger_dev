@@ -127,6 +127,7 @@ int main( int nargs, char** argv ) {
   bool printImages       = pset.get<bool>("PrintImages");
   float fthreshold       = pset.get<float>("PixelThreshold");
   float max_dist2contour = pset.get<float>("MaxDist2Contour");
+  bool makeCACADebugImage = pset.get<bool>("MakeCACADebugImage");
   std::vector<float> thresholds_v( 3, fthreshold );
   std::vector<float> label_thresholds_v( 3, -10 );  
   std::vector<int> label_neighborhood(3,0);
@@ -739,7 +740,8 @@ int main( int nargs, char** argv ) {
     larlitecv::CACAEndPtFilter cacaalgo;
     cacaalgo.setVerbosity(2);
     cacaalgo.setTruthInformation( xingptdata_prefilter.truthcrossingptinfo_v, xingptdata_prefilter.recocrossingptinfo_v );
-    cacaalgo.makeDebugImage();
+    if ( makeCACADebugImage )
+      cacaalgo.makeDebugImage();
     cacaalgo.evaluateEndPoints( prefilter_spacepoints_v, event_opflash_v, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, 17.0, 20.0, 150.0, caca_results );
     std::vector<larlitecv::BoundarySpacePoint> cacapassing_spacepoints_v;
     std::vector<int> cacapasses_unrolled;
@@ -758,15 +760,14 @@ int main( int nargs, char** argv ) {
       }
     }
 
-    if ( true ) {
-    }      
-    
-    std::stringstream path;
-    path << "boundaryptimgs/astarcluster_goodrecopts_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
-    cv::imwrite( path.str(), cacaalgo.getDebugImage(0) );
-    path.str("");
-    path << "boundaryptimgs/astarcluster_badrecopts_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
-    cv::imwrite( path.str(), cacaalgo.getDebugImage(1) );
+    if ( makeCACADebugImage ) {
+      std::stringstream path;
+      path << "boundaryptimgs/astarcluster_goodrecopts_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
+      cv::imwrite( path.str(), cacaalgo.getDebugImage(0) );
+      path.str("");
+      path << "boundaryptimgs/astarcluster_badrecopts_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
+      cv::imwrite( path.str(), cacaalgo.getDebugImage(1) );
+    }
 
     
     // // visualize cluster images
@@ -803,6 +804,8 @@ int main( int nargs, char** argv ) {
     }
     
 
+    // =================================================================================================================
+    // POST-FILTER ANALYSIS
     if ( ismc ) {
       // Evaluate post-filter points from the truth perspective
       

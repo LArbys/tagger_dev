@@ -44,15 +44,17 @@ namespace larlitecv {
     // we make blank cv images
     m_cvimg_v.clear();
     m_cvpath_v.clear();
-    m_clusterimg_v.clear();
+    //m_clusterimg_v.clear();
+    m_meta_v.clear();
     for ( auto const& img : img_v ) {
       larcv::Image2D blank( img.meta() );
       blank.paint(0.0);
-      cv::Mat cvimg1 = larcv::as_gray_mat( blank, 0, 255.0, 1.0 );
+      //cv::Mat cvimg1 = larcv::as_gray_mat( blank, 0, 255.0, 1.0 );
       cv::Mat cvimg2 = larcv::as_gray_mat( blank, 0, 255.0, 1.0 );      
-      m_cvpath_v.push_back( cvimg1 );
+      //m_cvpath_v.push_back( cvimg1 );
       m_cvimg_v.push_back( cvimg2 );
-      m_clusterimg_v.emplace_back( std::move(blank) );
+      //m_clusterimg_v.emplace_back( std::move(blank) );
+      m_meta_v.push_back( img.meta() );
     }
 
     if ( fMakeDebugImage ) {
@@ -121,12 +123,12 @@ namespace larlitecv {
 	}
       }
       // we copy back into the original image (slow-slow)
-      for (size_t r=0; r<m_clusterimg_v[p].meta().rows(); r++) {
-	for (size_t c=0; c<m_clusterimg_v[p].meta().cols(); c++) {
-	  if ( m_cvimg_v[p].at<uchar>(cv::Point(c,r))>0 )
-	    m_clusterimg_v[p].set_pixel(r,c,255.0);
-	}
-      }
+      // for (size_t r=0; r<m_clusterimg_v[p].meta().rows(); r++) {
+      // 	for (size_t c=0; c<m_clusterimg_v[p].meta().cols(); c++) {
+      // 	  if ( m_cvimg_v[p].at<uchar>(cv::Point(c,r))>0 )
+      // 	    m_clusterimg_v[p].set_pixel(r,c,255.0);
+      // 	}
+      // }
     }
   }
 
@@ -140,7 +142,8 @@ namespace larlitecv {
       std::vector<cv::Vec4i> hierarchy;
       cv::findContours( m_cvimg_v[p], contour_v, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE, cv::Point(0,0) );
       for ( auto& ctr : contour_v ) {
-	ContourShapeMeta ctrmeta( ctr, m_clusterimg_v[p].meta() );
+	//ContourShapeMeta ctrmeta( ctr, m_clusterimg_v[p].meta() );
+	ContourShapeMeta ctrmeta( ctr, m_meta_v[p] );
 	m_current_contours[p].emplace_back( std::move(ctrmeta) );
       }
     }
@@ -529,6 +532,7 @@ namespace larlitecv {
       imgpt.emplace_back( std::move(pt) );
     }
 
+    clock_t begin_contourloop = clock();
     std::vector< const ContourShapeMeta* > plane_seedcontours;
     int nplanes_found = 0;
     std::vector<int> seed_idx(3,-1);
@@ -547,6 +551,7 @@ namespace larlitecv {
 	  continue;
 	
 	// more detailed test
+	clock_t begin_pointpoly = clock();	
 	double dist = cv::pointPolygonTest( ctr, imgpt[p], true );
 	//std::cout << " contour (" << p << "," << idx << ") dist=" << dist << std::endl;
 	if ( dist>=max_dist2cluster && (closest_dist<0 || closest_dist>fabs(dist) ) ) {
@@ -554,7 +559,9 @@ namespace larlitecv {
 	  containing_idx = (int)idx;
 	  closest_dist   = fabs(dist);
 	}
-
+	clock_t end_pointpoly = clock();
+	m_stage_times[kPointPolyTest] += float(end_pointpoly-begin_pointpoly)/CLOCKS_PER_SEC;
+    
 	//if ( contains )
 	//break;
       }
@@ -568,18 +575,31 @@ namespace larlitecv {
       }
       seed_idx[p] = containing_idx;
     }//end of loop over planes
+
+    clock_t end_contourloop = clock();
+    m_stage_times[kContourLoop] += float( end_contourloop-begin_contourloop )/CLOCKS_PER_SEC;
     
     // Make a cluster using the seed clusters
+    clock_t begin_createcluster = clock();
     ContourAStarCluster seed( img_v, fMakeDebugImage );
+    clock_t end_createcluster = clock();
+    m_stage_times[kCreateCluster] += float(end_createcluster-begin_createcluster)/CLOCKS_PER_SEC;
 
     // make the seed cluster
+    clock_t begin_addcontours = clock();
     for (int p=0; p<3; p++) {
       if ( seed_idx[p]>=0 ) {
 	seed.addContour(p, plane_seedcontours[p], seed_idx[p] );
       }
     }
+    clock_t end_addcontours = clock();
+    m_stage_times[kAddContours] += float(end_addcontours-begin_addcontours)/CLOCKS_PER_SEC;
+    
+    clock_t begin_imageprep = clock();    
     seed.updateCVImage();
     seed.updateClusterContour();
+    clock_t end_imageprep = clock();
+    m_stage_times[kImagePrep] += float(end_imageprep-begin_imageprep)/CLOCKS_PER_SEC;
     return seed;
   }
 
@@ -863,6 +883,7 @@ namespace larlitecv {
 	  if ( foundq || foundbad)
 	    nplanes_w_charge_or_badch++;
 	}//end of plane loop
+
 	
 	if ( nplanes_w_charge>=2 && nplanes_w_charge_or_badch==nplanes ) {
 	  // good point
@@ -877,13 +898,15 @@ namespace larlitecv {
 		if ( col<0 || col>=(int)meta.cols() )
 		  continue;
 		if ( img_v[p].pixel( row, col )>tag_qthreshold || (badch_v[p].pixel(row,col)>0 && abs(dr)<=1 && abs(dc)<=1) ) {
-		  cluster.m_cvpath_v[p].at<uchar>( cv::Point(col,row) ) = 255;
+		  //cluster.m_cvpath_v[p].at<uchar>( cv::Point(col,row) ) = 255;
 		  cluster.m_cvimg_v[p].at<uchar>( cv::Point(col,row) ) = 255;		  
 		}
 	      }//end of col loop
 	    }//end of row loop
 	  }//en dof plane loop
 	}//end of if point is good
+
+	
       }//end of step loop
     }//end of node loop
 
@@ -904,17 +927,29 @@ namespace larlitecv {
     }
 
     // path image contours
-    cluster.m_path_contours.clear();
-    cluster.m_path_contours.resize(3);
-    for (int p=0; p<cluster.m_nplanes; p++) {
-      std::vector< std::vector<cv::Point> > contour_v;
-      std::vector<cv::Vec4i> hierarchy;
-      cv::findContours( cluster.m_cvpath_v[p], contour_v, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE, cv::Point(0,0) );
-      for ( auto& ctr : contour_v ) {
-	ContourShapeMeta ctrmeta( ctr, img_v[p].meta() );
-	cluster.m_path_contours[p].emplace_back( std::move(ctrmeta) );
-      }
-    }
+    // cluster.m_path_contours.clear();
+    // cluster.m_path_contours.resize(3);
+    // for (int p=0; p<cluster.m_nplanes; p++) {
+    //   std::vector< std::vector<cv::Point> > contour_v;
+    //   std::vector<cv::Vec4i> hierarchy;
+    //   cv::findContours( cluster.m_cvpath_v[p], contour_v, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE, cv::Point(0,0) );
+    //   for ( auto& ctr : contour_v ) {
+    // 	ContourShapeMeta ctrmeta( ctr, img_v[p].meta() );
+    // 	cluster.m_path_contours[p].emplace_back( std::move(ctrmeta) );
+    //   }
+    // }
     
   }//end of function
+
+  void ContourAStarClusterAlgo::printStageTimes() {
+    std::cout << "================================================" << std::endl;
+    std::cout << "ContourAStarClusterAlgo::Stage Times" << std::endl;
+    std::cout << "Seeding Contour Loop: " << m_stage_times[kContourLoop] << std::endl;
+    std::cout << "Seeding Point Poly Test: " << m_stage_times[kPointPolyTest] << std::endl;
+    std::cout << "Seeding Create Cluster: " << m_stage_times[kCreateCluster] << std::endl;    
+    std::cout << "Seeding Image Prep: " << m_stage_times[kImagePrep] << std::endl;
+    std::cout << "Seeding ContourAddition: " << m_stage_times[kAddContours] << std::endl;
+    std::cout << "================================================" << std::endl;
+  }
+  
 }
