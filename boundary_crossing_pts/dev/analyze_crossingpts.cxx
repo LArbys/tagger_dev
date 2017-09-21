@@ -568,22 +568,22 @@ int main( int nargs, char** argv ) {
       // store the pre-filter data into the tree
       int numpts = xingptdata_prefilter.truthcrossingptinfo_v.size();
       for (int ipt=0; ipt<numpts; ipt++) {
-	larlitecv::TruthCrossingPointAna_t& info = xingptdata_prefilter.truthcrossingptinfo_v[ipt];
+      	larlitecv::TruthCrossingPointAna_t& info = xingptdata_prefilter.truthcrossingptinfo_v[ipt];
 	
-	mcxingpt_type           = info.type;
-	mcxingpt_matched        = info.matched;
-	if ( info.flashindex>=0 )
-	  mcxingpt_flashmatched = 1;
-	else
-	  mcxingpt_flashmatched = 0;
-	mcxingpt_matched_type   = info.matched_type;
-	mcxingpt_nplaneswcharge = info.nplanes_w_charge;
-	for (int p=0; p<3; p++) {
-	  mcxingpt_wire[p]      = info.imgcoord[p+1];
-	  mcxingpt_pos[p]       = info.crossingpt_det[p];
-	}
-	mcxingpt_dist           = info.matched_dist;
-	xingpt_trees[1]->Fill();
+      	mcxingpt_type           = info.type;
+      	mcxingpt_matched        = info.matched;
+      	if ( info.flashindex>=0 )
+      	  mcxingpt_flashmatched = 1;
+      	else
+      	  mcxingpt_flashmatched = 0;
+      	mcxingpt_matched_type   = info.matched_type;
+      	mcxingpt_nplaneswcharge = info.nplanes_w_charge;
+      	for (int p=0; p<3; p++) {
+      	  mcxingpt_wire[p]      = info.imgcoord[p+1];
+      	  mcxingpt_pos[p]       = info.crossingpt_det[p];
+      	}
+      	mcxingpt_dist           = info.matched_dist;
+      	xingpt_trees[1]->Fill();
       }
     }
       
@@ -741,87 +741,25 @@ int main( int nargs, char** argv ) {
     cacaalgo.setTruthInformation( xingptdata_prefilter.truthcrossingptinfo_v, xingptdata_prefilter.recocrossingptinfo_v );
     cacaalgo.makeDebugImage();
     cacaalgo.evaluateEndPoints( prefilter_spacepoints_v, event_opflash_v, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, 17.0, 20.0, 150.0, caca_results );
-    
-    // std::vector<int> passes_caca( all_endpoints.size(), 0 );
-    // int good_npasses_caca[2] = {0,0}; // [anode,cathode]
-    // int good_nfails_caca[2]  = {0,0}; // [anode,cathode]
-    // int bad_npasses_caca[2] = {0,0}; // [anode,cathode]
-    // int bad_nfails_caca[2]  = {0,0}; // [anode,cathode]
-
-    // ireco = -1;
-    // bool stop = false;
-    // for ( auto const& p_sp_v : prefilter_spacepoints_v ) {
-    //   for (auto const& sp : *p_sp_v ) {
-    // 	ireco++;
-    // 	// if ( ireco!=47 )
-    // 	//   continue;
+    std::vector<larlitecv::BoundarySpacePoint> cacapassing_spacepoints_v;
+    std::vector<int> cacapasses_unrolled;
+    ireco = -1;
+    for (size_t iv=0; iv<prefilter_spacepoints_v.size(); iv++) {
+      const std::vector<larlitecv::BoundarySpacePoint>* psp_v = prefilter_spacepoints_v[iv];
+      for (size_t ipt=0; ipt<psp_v->size(); ipt++) {
+	ireco++;
+	if ( caca_results[iv][ipt]==1) {
+	  cacapassing_spacepoints_v.push_back( psp_v->at(ipt) );
+	  cacapasses_unrolled.push_back(1);
+	}
+	else
+	  cacapasses_unrolled.push_back(0);
 	
-    // 	larlitecv::RecoCrossingPointAna_t& recoinfo = xingptdata_prefilter.recocrossingptinfo_v[ireco];
-    
-    // 	if ( sp.type()==larlitecv::kAnode || sp.type()==larlitecv::kCathode ) {
+      }
+    }
 
-    // 	  int tot_flashidx = sp.getFlashIndex();
-    // 	  int loc_flashidx = tot_flashidx;
-    // 	  std::cout << "--------------------------------------------------------------" << std::endl;
-    // 	  std::cout << "[ipt " << ireco << "] Anode/Cathode space point" << std::endl;
-    // 	  std::cout << "  flash index: " << tot_flashidx << std::endl;
-	  
-    // 	  larlite::opflash* popflash = NULL;
-    // 	  for ( int ievop=0; ievop<(int)event_opflash_v.size(); ievop++ ) {
-    // 	    if ( loc_flashidx >= event_opflash_v.at(ievop)->size() )
-    // 	      loc_flashidx -= (int)event_opflash_v.at(ievop)->size();
-    // 	    else
-    // 	      popflash = &(event_opflash_v.at(ievop)->at(loc_flashidx));
-    // 	  }
-
-    // 	  std::cout << "  flash local index: " << loc_flashidx << std::endl;		
-    // 	  std::cout << "  flash pointer: " << popflash << std::endl;
-    // 	  bool passes = cacaalgo.isEndPointGood( sp, popflash, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, sp.type(), 17.0, 50.0, 150 );
-    // 	  std::cout << "Result: " << passes << std::endl;
-    // 	  std::cout << "Has Truth Match: " << recoinfo.truthmatch << std::endl;
-
-    // 	  if ( recoinfo.truthmatch==1 ) {
-	    
-    // 	    const larlitecv::TruthCrossingPointAna_t& truthinfo = xingptdata_prefilter.truthcrossingptinfo_v[recoinfo.truthmatch_index];
-    // 	    std::cout << "Truth crossing position: (" << truthinfo.crossingpt_detsce[0] << "," << truthinfo.crossingpt_detsce[1] << "," << truthinfo.crossingpt_detsce[2] << ")" << std::endl;
-	    
-    // 	    // good reco point
-    // 	    if ( passes ) {
-    // 	      passes_caca[ireco] = 1;	  
-    // 	      good_npasses_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
-    // 	    }
-    // 	    else {
-    // 	      good_nfails_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
-    // 	      if ( ireco!=57 )
-    // 		stop = true;
-    // 	    }
-    // 	  }
-    // 	  else {
-    // 	    // bad reco point
-    // 	    if ( passes ) {
-    // 	      passes_caca[ireco] = 1;	  
-    // 	      bad_npasses_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
-    // 	    }
-    // 	    else
-    // 	      bad_nfails_caca[(int)sp.type()-(int)larlitecv::kAnode]++;
-    // 	  }
-    // 	}// if anode or cathode
-
-    // 	if (stop)
-    // 	  break;
-	
-    //   }//end of space points loop
-    //   if ( stop )
-    // 	break;
-    // }//end of prefilter_spacepoints_v loop
-
-    // std::cout << "CACA Summary" << std::endl;
-    // std::cout << "  Good Anode:   " << good_npasses_caca[0] << "/" << good_npasses_caca[0]+good_nfails_caca[0] << std::endl;
-    // std::cout << "  Good Cathode: " << good_npasses_caca[1] << "/" << good_npasses_caca[1]+good_nfails_caca[1] << std::endl;    
-    // std::cout << "  Bad Anode:    " << bad_npasses_caca[0]  << "/" << bad_npasses_caca[0]+bad_nfails_caca[0] << std::endl;
-    // std::cout << "  Bad Cathode:  " << bad_npasses_caca[1]  << "/" << bad_npasses_caca[1]+bad_nfails_caca[1] << std::endl;    
-
-    
+    if ( true ) {
+    }      
     
     std::stringstream path;
     path << "boundaryptimgs/astarcluster_goodrecopts_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
@@ -851,8 +789,7 @@ int main( int nargs, char** argv ) {
 
     std::cout << "===================================================" << std::endl;
     std::cout << "===================================================" << std::endl;
-    
-    assert(false);
+    cacaalgo.printStageTimes();
     
     // =================================================================================================================
 
@@ -867,8 +804,11 @@ int main( int nargs, char** argv ) {
     
 
     if ( ismc ) {
+      // Evaluate post-filter points from the truth perspective
+      
       std::vector< const std::vector<larlitecv::BoundarySpacePoint>*  > postfilter_spacepoints_v;
-      postfilter_spacepoints_v.push_back( &contourpassing_spacepoints_v );
+      //postfilter_spacepoints_v.push_back( &contourpassing_spacepoints_v );
+      postfilter_spacepoints_v.push_back( &cacapassing_spacepoints_v );
       larlitecv::analyzeCrossingMatches( xingptdata_postfilter, postfilter_spacepoints_v, imgs_v.front().meta(), fMatchRadius );
 
       // store the post-filter data into the tree
@@ -901,7 +841,8 @@ int main( int nargs, char** argv ) {
 	reco_matchedtype = info.truthmatch_type;
 	reco_mindist2true = info.truthmatch_dist;
 	reco_nplaneswcharge = 3;
-	reco_passes = recofilter_passes[ireco];
+	//reco_passes = recofilter_passes[ireco];
+	reco_passes = cacapasses_unrolled[ireco];
 	recoxingpt_tree->Fill();
       }
     }

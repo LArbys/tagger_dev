@@ -36,11 +36,7 @@ namespace larlitecv {
 
   class CACAEndPtFilter {
   public:
-    CACAEndPtFilter() {
-      fTruthInfoLoaded = false;
-      fMakeDebugImage = false;
-      m_verbosity = 0;
-    };
+    CACAEndPtFilter();
     virtual ~CACAEndPtFilter() {};
 
     void evaluateEndPoints( const std::vector< const std::vector<larlitecv::BoundarySpacePoint>* >& sp_v, const std::vector< larlite::event_opflash* >& flash_v,
@@ -66,7 +62,10 @@ namespace larlitecv {
     void makeDebugImage( bool makeit=true ) { fMakeDebugImage = makeit; };
     int numDebugImages() { return m_cvimg_rgbdebug.size(); };
     const cv::Mat& getDebugImage( int index=0 ) { return m_cvimg_rgbdebug[index]; };
+    bool wasLastEndPointDuplicate() { return m_last_was_duplicate; };
 
+    void printStageTimes();
+    
   protected:
     
     larlitecv::ContourAStarClusterAlgo m_caca;
@@ -75,10 +74,25 @@ namespace larlitecv {
     const std::vector<larlitecv::RecoCrossingPointAna_t>*  m_recoinfo_ptr_v;
     bool fTruthInfoLoaded;
     int m_verbosity;
+    bool m_last_was_duplicate;
 
     std::vector<cv::Mat> m_cvimg_rgbdebug;
     bool fMakeDebugImage;
 
+    // Duplicate handling
+    bool isDuplicateEndPoint( const larlitecv::ContourAStarCluster& seedcluster ); ///< function scans existing clusters to determine if duplicate
+    struct PastClusterInfo_t {
+      std::vector< std::set<int> > plane_bmtcv_indices;
+      PastClusterInfo_t( const larlitecv::ContourAStarCluster& cluster ) {
+	plane_bmtcv_indices = cluster.m_bmtcv_indices;
+      };
+    };
+    std::vector< PastClusterInfo_t > m_past_info;
+
+    // Profiling
+    enum { kSeedMaking=0, kDuplicateEval, kClusterExtension, kDebugImages, kOverall, kNumStages };
+    std::vector< float > m_stage_times;
+    
   };
 
 }

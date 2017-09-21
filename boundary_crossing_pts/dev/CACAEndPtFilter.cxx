@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <assert.h>
+#include <ctime>
 
 // larlite
 #include "LArUtil/LArProperties.h"
@@ -15,7 +16,14 @@
 
 namespace larlitecv {
 
-  
+  CACAEndPtFilter::CACAEndPtFilter() {
+    fTruthInfoLoaded = false;
+    fMakeDebugImage = false;
+    m_verbosity = 0;
+    m_last_was_duplicate = false;
+    m_stage_times.resize( kNumStages, 0 );
+  };
+    
   
   bool CACAEndPtFilter::isEndPointGood( const larlitecv::BoundarySpacePoint& pt, const larlite::opflash* associated_flash,
 					const std::vector<larcv::Image2D>& img_v, const std::vector<larcv::Image2D>& badch_v,
@@ -26,12 +34,43 @@ namespace larlitecv {
     std::cout << __FILE__ << ":" << __LINE__ << " ----------------------------------" << std::endl;
     
     const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;    
-    larlitecv::ContourAStarCluster cluster = m_caca.makeCluster( pt.pos(), img_v, badch_v, plane_contours_v, -10, 3 );
-    if ( cluster.m_path3d.size()==0 ) {
+    //larlitecv::ContourAStarCluster cluster = m_caca.makeCluster( pt.pos(), img_v, badch_v, plane_contours_v, -10, 3 );
+
+    // make a seed cluster
+    clock_t begin_seed = clock();
+    m_caca.makeDebugImage();
+    larlitecv::ContourAStarCluster cluster = m_caca.makeSeedClustersFrom3DPoint( pt.pos(), img_v, plane_contours_v, -10 );
+    clock_t end_seed = clock();
+    m_stage_times[kSeedMaking] += float(end_seed-begin_seed)/CLOCKS_PER_SEC;
+
+    // test if a duplicate
+    clock_t begin_dup = clock();
+    std::cout << "  Check if duplicate" << std::endl;
+    if ( isDuplicateEndPoint( cluster ) ) {
+      std::cout << " Duplicate seed cluster." << std::endl;
+      m_last_was_duplicate = true;
       m_last_clusters.emplace_back( std::move(cluster) );      
       return false;
     }
-    
+    else
+      m_last_was_duplicate = false;
+    clock_t end_dup = clock();
+    m_stage_times[kDuplicateEval] += float(end_dup-begin_dup)/CLOCKS_PER_SEC;
+
+    // extend a non-duplicate cluster
+    clock_t begin_ext = clock();
+    m_caca.extendSeedCluster( pt.pos(), img_v, badch_v, plane_contours_v, -10, 3, cluster );
+    clock_t end_ext = clock();
+    m_stage_times[kClusterExtension] += float(end_ext-begin_ext)/CLOCKS_PER_SEC;    
+
+    // check if good path could be made
+    if ( cluster.m_path3d.size()==0 ) {
+      // if not, register seed cluster, return
+      m_last_clusters.emplace_back( std::move(cluster) );      
+      return false;
+    }
+
+    // good cluster with 3D-consistent track found. evaluate goodness.
     const std::vector<float>& start = cluster.m_path3d.front();
     const std::vector<float>& end   = cluster.m_path3d.back();
     float tick_start = start[0]/cm_per_tick + 3200.0;
@@ -169,11 +208,15 @@ namespace larlitecv {
     // -------
     // passes_filter: vector of output, 0=fails, 1=passes, follows structure of sp_v    
 
+    clock_t begin_overall = clock();
+    
     // tracking variables
     std::vector<int> good_npasses_caca( larlitecv::kNumEndTypes, 0 );
     std::vector<int> good_nfails_caca(  larlitecv::kNumEndTypes, 0 );
+    std::vector<int> good_duplicates_caca(  larlitecv::kNumEndTypes, 0 );    
     std::vector<int> bad_npasses_caca(  larlitecv::kNumEndTypes, 0 );
     std::vector<int> bad_nfails_caca(   larlitecv::kNumEndTypes, 0 );
+    std::vector<int> bad_duplicates_caca(  larlitecv::kNumEndTypes, 0 );    
     
     int numreco_good_in_contour = 0;
     int numreco_bad_in_contour = 0;    
@@ -189,6 +232,7 @@ namespace larlitecv {
     }
     
     if ( fMakeDebugImage ) {
+      clock_t begin = clock();
       m_cvimg_rgbdebug.clear();
       // we create 2 RGB image. We will use this to mark endpoints provided to the filter.
       // (1) reco points which are close to true crossing points
@@ -208,10 +252,13 @@ namespace larlitecv {
       }
 
       m_cvimg_rgbdebug.emplace_back( std::move(rgbdebug) );
-      m_cvimg_rgbdebug.emplace_back( std::move(rgbdebug2) );      
+      m_cvimg_rgbdebug.emplace_back( std::move(rgbdebug2) );
+      clock_t end = clock();
+      m_stage_times[kDebugImages] += float(end-begin)/CLOCKS_PER_SEC;
     }
     
     passes_filter.clear();
+    m_past_info.clear();
 
     for ( auto const& p_sp_v : sp_v ) {
       std::vector<int> passes_v(p_sp_v->size(),0);
@@ -221,12 +268,18 @@ namespace larlitecv {
 	ireco++; // counter for all spacepoint indices
 	isp++;   // counter for sp index of this vector
 
-	// if ( sp.type()==larlitecv::kTop
-	//      || sp.type()==larlitecv::kBottom
-	//      || sp.type()==larlitecv::kAnode
-	//      || sp.type()==larlitecv::kCathode ) {
-	if ( sp.type()==larlitecv::kAnode ) {
+	// debug: select event
+	// if (ireco!=12)
+	//   continue;
 	
+	if ( sp.type()==larlitecv::kTop
+	     || sp.type()==larlitecv::kBottom
+	     || sp.type()==larlitecv::kUpstream
+	     || sp.type()==larlitecv::kDownstream	     
+	     || sp.type()==larlitecv::kAnode
+	     || sp.type()==larlitecv::kCathode ) {
+	//if ( sp.type()==larlitecv::kAnode ) {
+	  
 	  clearClusters();
 	  
 	  int tot_flashidx = sp.getFlashIndex();
@@ -255,6 +308,18 @@ namespace larlitecv {
 
 	  if ( m_verbosity>0 ) {
 	    std::cout << "Result: " << passes << std::endl;
+	  }
+
+	  if ( wasLastEndPointDuplicate() ) {
+	    std::cout << "Duplicate. Move to next end point." << std::endl;
+	    if ( fTruthInfoLoaded ) {
+	      if ( (m_recoinfo_ptr_v->at(ireco)).truthmatch==1 )
+		good_duplicates_caca[ (int)sp.type() ]++;
+	      else
+		bad_duplicates_caca[ (int)sp.type() ]++;
+	    }
+	    good_duplicates_caca[ (int)sp.type() ]++;
+	    continue;
 	  }
 
 	  
@@ -338,6 +403,7 @@ namespace larlitecv {
 	  
 	  if ( fMakeDebugImage ) {
 	    // we draw the cluster and end point
+	    clock_t begin = clock();
 	    
 	    // contours
 	    larlitecv::ContourAStarCluster& astar_cluster = getLastCluster();
@@ -356,7 +422,7 @@ namespace larlitecv {
 	      img_index = 0;
 	    }
 	    
-	    for ( int p=0; p<astar_cluster.m_current_contours.size(); p++) {
+	    for ( size_t p=0; p<astar_cluster.m_current_contours.size(); p++) {
 	      // first copy into contour container	      
 	      std::vector< std::vector<cv::Point> > contour_v;	    	      
 	      auto const& contour_shpmeta_v = astar_cluster.m_current_contours[p];
@@ -378,9 +444,15 @@ namespace larlitecv {
 	      cv::putText( m_cvimg_rgbdebug[img_index], cv::String(ptname.str()), cv::Point( sp_imgcoords[p+1]+2, sp_imgcoords[0]+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.5, ptcolor );
 	      
 	    }// end of plane loop
+	    clock_t end = clock();
+	    m_stage_times[kDebugImages] += float(end-begin)/CLOCKS_PER_SEC;	
 	  }//end of if debug image
 	  
 	}//if correct type
+	else  {
+	  passes_v[isp] = 1;
+	}
+
       }//end of space points loop
       
       passes_filter.emplace_back( std::move(passes_v) );
@@ -393,7 +465,13 @@ namespace larlitecv {
 	std::cout << "  Good " << larlitecv::BoundaryEndNames((larlitecv::BoundaryEnd_t)i) << ":   " << good_npasses_caca[i] << "/" << good_npasses_caca[i]+good_nfails_caca[i] << std::endl;
       for (int i=0; i<larlitecv::kNumEndTypes; i++)
 	std::cout << "  Bad "  << larlitecv::BoundaryEndNames((larlitecv::BoundaryEnd_t)i) << ":   " << bad_npasses_caca[i] <<  "/" << bad_npasses_caca[i]+bad_nfails_caca[i] << std::endl;
+      for (int i=0; i<larlitecv::kNumEndTypes; i++)
+	std::cout << "  Duplicates (Good/Bad) "  << larlitecv::BoundaryEndNames((larlitecv::BoundaryEnd_t)i) << ":   "
+		  << good_duplicates_caca[i] <<  "/" << bad_duplicates_caca[i] << std::endl;
     }
+
+    clock_t end_overall = clock();
+    m_stage_times[kOverall] += float(end_overall-begin_overall)/CLOCKS_PER_SEC;
     
   }
   
@@ -401,6 +479,58 @@ namespace larlitecv {
     m_truthinfo_ptr_v = &truthinfo;
     m_recoinfo_ptr_v  = &recoinfo;
     fTruthInfoLoaded = true;
+  }
+
+  bool CACAEndPtFilter::isDuplicateEndPoint( const larlitecv::ContourAStarCluster& seedcluster ) {
+    // checks the seed cluster against previous clusters.
+    // if plane contours a subset of other contour clusters, then a duplicate
+    std::cout << "  duplicate check. number of past clusters=" << m_last_clusters.size() << std::endl;
+    std::cout << "  seedcluster plane indices: " << seedcluster.m_bmtcv_indices.size() << std::endl;
+    
+    for ( auto const& pastcluster : m_past_info ) {
+      // check the plane contour indices
+      bool overlaps = true;
+      for (size_t p=0; p<seedcluster.m_bmtcv_indices.size(); p++) {
+	for ( auto const& contourindex : seedcluster.m_bmtcv_indices[p] )  {
+
+	  // for debug
+	  // ---------
+	  // std::cout << "seed: p=" << p << " contourindex=" << contourindex << " check in existing cluster: ";
+	  // for ( auto const& usedindex : pastcluster.plane_bmtcv_indices[p] )
+	  //   std::cout << " " << usedindex;
+	  // std::cout << std::endl;
+	  
+	  if ( pastcluster.plane_bmtcv_indices[p].find(contourindex)==pastcluster.plane_bmtcv_indices[p].end() ) {
+	    // index not found within set
+	    overlaps = false;
+	    break;
+	  }
+	}
+	if ( !overlaps ) {
+	  // no need to keep checking
+	  break;
+	}
+      }
+
+      // overlaps, so is a duplicate
+      if ( overlaps ) {
+	return true;
+      }
+    }
+
+    // didn't overlap with any, not a duplicate
+    // make a past info
+    m_past_info.push_back( PastClusterInfo_t(seedcluster) );
+    return false;
+  }
+
+  void CACAEndPtFilter::printStageTimes() {
+    std::cout << "CACAEndPtFilter Timing----------" << std::endl;
+    std::cout << "Overall: " << m_stage_times[kOverall] << std::endl;
+    std::cout << "Seed making: " << m_stage_times[kSeedMaking] << std::endl;
+    std::cout << "Duplicate eval: " << m_stage_times[kDuplicateEval] << std::endl;
+    std::cout << "Cluster extension: " << m_stage_times[kClusterExtension] << std::endl;
+    std::cout << "Debug Images: " << m_stage_times[kDebugImages] << std::endl;
   }
 
 }

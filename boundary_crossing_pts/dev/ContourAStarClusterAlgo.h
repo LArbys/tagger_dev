@@ -28,8 +28,8 @@ namespace larlitecv {
       makeDebugImage(false);
     };
     ContourAStarCluster( const std::vector<larcv::Image2D>& img_v, bool make_debug_img=false ) {
+      makeDebugImage(make_debug_img);      
       setImageMeta(img_v);
-      makeDebugImage(make_debug_img);
     };
     virtual ~ContourAStarCluster();
 
@@ -68,7 +68,7 @@ namespace larlitecv {
   };
   
   class ContourAStarClusterAlgo {
-
+    
   public:
     ContourAStarClusterAlgo() {};
     virtual ~ContourAStarClusterAlgo() {};
@@ -85,6 +85,11 @@ namespace larlitecv {
 				     const std::vector<larcv::Image2D>& badch_v,
 				     const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
 				     const float max_dist2cluster, const int maxloopsteps=3 );
+    
+    void extendSeedCluster( const std::vector<float>& pos3d, const std::vector<larcv::Image2D>& img_v,
+			    const std::vector<larcv::Image2D>& badch_v,
+			    const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+			    const float max_dist2cluster, const int maxloopsteps, ContourAStarCluster& cluster );
 
     std::vector< std::set<int> > extendClusterUsingAStarPath( ContourAStarCluster& cluster, std::vector< std::vector<float> >& path3d,
 							      const std::vector<larcv::Image2D>& img_v,

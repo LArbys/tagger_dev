@@ -154,11 +154,11 @@ namespace larlitecv {
     for (int p=0; p<m_nplanes; p++) {
       for ( auto& ctr : m_current_contours[p] ) {
 	
-	if ( min_row < ctr.getFitSegmentStart().y || min_row<0 )
-	  min_row = ctr.getFitSegmentStart().y;
+	if ( min_row < ctr.getMinY() || min_row<0 )
+	  min_row = ctr.getMinY();
 
-	if ( max_row > ctr.getFitSegmentEnd().y || max_row<0 )
-	  max_row = ctr.getFitSegmentEnd().y;
+	if ( max_row > ctr.getMaxY() || max_row<0 )
+	  max_row = ctr.getMaxY();
       }
     }
 
@@ -181,6 +181,8 @@ namespace larlitecv {
     };
 
     const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
+
+    std::cout << "getCluster3DPointAtTimeTick: row=" << row << std::endl;
     
     std::vector<ctr_pt_t> contour_points;
     
@@ -201,6 +203,7 @@ namespace larlitecv {
 	  double dist = cv::pointPolygonTest( ctr, testpt, false );
 	  //std::cout << "point (" << c << "," << row << ") dist=" << dist << " incontour=" << incontour << std::endl;
 	  if ( dist<0 ) {
+	    // not in contour
 	    if ( incontour ) {
 	      // close out a contour crossing
 	      ctr_pt_t ctr_xing;
@@ -217,9 +220,10 @@ namespace larlitecv {
 	      maxq = -1;
 	      nfound++;
 	    }
-	    continue;	    
+	    continue; // move to next col
 	  }
 
+	  // makes it here, then in contour
 	  incontour = true;
 	  
 	  if ( minc<0 || c<minc ) {
@@ -314,16 +318,28 @@ namespace larlitecv {
 							    const std::vector<larcv::Image2D>& badch_v,
 							    const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
 							    const float max_dist2cluster, const int maxloopsteps ) {
-
-    const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
+    
     ContourAStarCluster cluster = makeSeedClustersFrom3DPoint( pos3d, img_v, plane_contours_v, max_dist2cluster );
+    extendSeedCluster( pos3d, img_v, badch_v, plane_contours_v, max_dist2cluster, maxloopsteps, cluster );
+    return cluster;
+  }
+
+
+  void ContourAStarClusterAlgo::extendSeedCluster( const std::vector<float>& pos3d, const std::vector<larcv::Image2D>& img_v,
+						   const std::vector<larcv::Image2D>& badch_v,
+						   const std::vector< std::vector<ContourShapeMeta> >& plane_contours_v,
+						   const float max_dist2cluster, const int maxloopsteps, ContourAStarCluster& cluster ) {
+    const float cm_per_tick = ::larutil::LArProperties::GetME()->DriftVelocity()*0.5;
+
 
     // get the first start/end points
-      // first get the overlapping time region
+    // first get the overlapping time region
     std::vector<int> timerange = cluster.getOverlappingRowRange();
-    timerange[0]++;
-    timerange[1]--;
-    std::cout << "Time range: [" << timerange[0] << "," << timerange[1] << "]" << std::endl;
+    if ( abs(timerange[0]-timerange[1])>10 ) {
+      timerange[0] += 3;
+      timerange[1] -= 3;
+    }
+    std::cout << "Row range: [" << timerange[0] << "," << timerange[1] << "]" << std::endl;
     cluster.m_current_min = timerange[0];
     cluster.m_current_max = timerange[1];
 
@@ -350,13 +366,15 @@ namespace larlitecv {
     std::vector<float> min_pos3d;
     std::vector<int> max_imgcoords;
     std::vector<float> max_pos3d;
+    std::cout << "Get min point -----------------------" << std::endl;
     bool foundpoint_min = cluster.getCluster3DPointAtTimeTick( timerange[0], img_v, badch_v, true, min_imgcoords, min_pos3d );
+    std::cout << "Get max point -----------------------" << std::endl;    
     bool foundpoint_max = cluster.getCluster3DPointAtTimeTick( timerange[1], img_v, badch_v, true, max_imgcoords, max_pos3d );
 
     if ( !foundpoint_min || !foundpoint_max ) {
       // bad seed
       std::cout << "Bad seeds @min=" << foundpoint_min << " @max=" << foundpoint_max << std::endl;
-      return cluster;
+      return;
     }
 
     // astar config ---------------------------
@@ -479,7 +497,6 @@ namespace larlitecv {
 	break;
     }
     
-    return cluster;
   }
   
   ContourAStarCluster ContourAStarClusterAlgo::makeSeedClustersFrom3DPoint( const std::vector<float>& pos3d, const std::vector<larcv::Image2D>& img_v,
@@ -521,18 +538,20 @@ namespace larlitecv {
       bool contains = false;
       int containing_idx = -1;
       float closest_dist = -1;
-      for (int idx=0; idx<(int)plane_contours_v[p].size(); idx++) {
+      for (size_t idx=0; idx<plane_contours_v[p].size(); idx++) {
 	// test imgpt
-	//bool bboxcontains = plane_contours_v[p][idx].getBBox().contains( imgpt[p] );
-	//if ( !bboxcontains )
-	//continue;
+	const ContourShapeMeta& ctr = plane_contours_v[p][idx];
+	
+	// fast test
+	if ( imgpt[p].y<ctr.getMinY() || imgpt[p].y>ctr.getMaxY() )
+	  continue;
 	
 	// more detailed test
-	double dist = cv::pointPolygonTest( plane_contours_v[p][idx], imgpt[p], true );
+	double dist = cv::pointPolygonTest( ctr, imgpt[p], true );
 	//std::cout << " contour (" << p << "," << idx << ") dist=" << dist << std::endl;
 	if ( dist>=max_dist2cluster && (closest_dist<0 || closest_dist>fabs(dist) ) ) {
 	  contains       = true;
-	  containing_idx = idx;
+	  containing_idx = (int)idx;
 	  closest_dist   = fabs(dist);
 	}
 
