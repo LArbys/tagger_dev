@@ -63,13 +63,14 @@
 // larlitecv
 #include "Base/DataCoordinator.h"
 #include "ChargeSegmentAlgos/PathPixelChargeMethods.h"
+#include "TaggerContourTools/BMTCV.h"
+#include "TaggerContourTools/ContourAStarClusterAlgo.h"
+#include "TaggerContourTools/CACAEndPtFilter.h"
 
 // dev
-#include "TaggerContourTools/BMTCV.h"
 #include "BMTContourFilterAlgo.h"
 #include "ContourClusterAlgo.h"
-#include "ContourAStarClusterAlgo.h"
-#include "CACAEndPtFilter.h"
+
 
 int main( int nargs, char** argv ) {
   
@@ -742,7 +743,7 @@ int main( int nargs, char** argv ) {
     cacaalgo.setTruthInformation( xingptdata_prefilter.truthcrossingptinfo_v, xingptdata_prefilter.recocrossingptinfo_v );
     if ( makeCACADebugImage )
       cacaalgo.makeDebugImage();
-    cacaalgo.evaluateEndPoints( prefilter_spacepoints_v, event_opflash_v, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, 17.0, 20.0, 150.0, caca_results );
+    cacaalgo.evaluateEndPoints( prefilter_spacepoints_v, event_opflash_v, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, 150.0, caca_results );
     std::vector<larlitecv::BoundarySpacePoint> cacapassing_spacepoints_v;
     std::vector<larlitecv::BoundarySpacePoint> cacapassing_moved_v = cacaalgo.regenerateFitleredBoundaryPoints( imgs_v );
     
