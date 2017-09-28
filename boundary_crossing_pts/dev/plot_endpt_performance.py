@@ -6,7 +6,7 @@ if len(sys.argv)>=2:
     anafile = sys.argv[1]
 
 rfile = rt.TFile(anafile, "OPEN")
-tree = rfile.Get("mcxingptana_prefilter")
+tree = rfile.Get("mcxingptana_postfilter")
 #tree = rfile.Get("mcxingptana")
 
 # POS

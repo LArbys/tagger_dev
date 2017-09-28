@@ -47,7 +47,7 @@ namespace larlitecv {
     // test if a duplicate
     clock_t begin_dup = clock();
     std::cout << "  Check if duplicate" << std::endl;
-    if ( isDuplicateEndPoint( cluster ) ) {
+    if ( isDuplicateEndPoint( cluster, pt ) ) {
       std::cout << " Duplicate seed cluster." << std::endl;
       m_last_was_duplicate = true;
       m_last_clusters.emplace_back( std::move(cluster) );      
@@ -71,11 +71,212 @@ namespace larlitecv {
       return false;
     }
 
-    // good cluster with 3D-consistent track found. evaluate goodness.
+
+    // fill in most recent past info
+    // -----------------------------
+    // set the position based on the end closest to the wall
+    std::cout << "fill in past info." << std::endl;
+    std::cout << "front: (" << cluster.m_path3d.front()[0] << "," << cluster.m_path3d.front()[1] << "," << cluster.m_path3d.front()[2] << ")" << std::endl;
+    std::cout << "back:  (" << cluster.m_path3d.back()[0] << "," << cluster.m_path3d.back()[1] << "," << cluster.m_path3d.back()[2] << ")" << std::endl;
+
+    std::vector<float> pathdir_front(3,0);
+    std::vector<float> pathdir_back(3,0);    
+
+      
+    // get the direction of the point 10 cm (or closer out)
     const std::vector<float>& start = cluster.m_path3d.front();
-    const std::vector<float>& end   = cluster.m_path3d.back();
+    for ( auto const& pos : cluster.m_path3d ) {
+      float dist2start = 0.;      
+      for (int i=0; i<3; i++)
+	dist2start += ( pos[i]-start[i] )*( pos[i]-start[i] );
+      dist2start = sqrt(dist2start);
+      if ( dist2start<10.0 ) {
+	// update the front dir
+	for (int i=0; i<3; i++)
+	  pathdir_front[i] = (pos[i]-start[i])/dist2start;
+      }
+    }
+    const std::vector<float>& end = cluster.m_path3d.back();
+    for ( int ipos=(int)cluster.m_path3d.size()-1; ipos>=0; ipos-- ) {
+      auto const& pos = cluster.m_path3d[ipos];
+      float dist2end = 0.;
+      for (int i=0; i<3; i++)
+	dist2end += ( pos[i]-end[i] )*( pos[i]-end[i] );
+      dist2end = sqrt(dist2end);
+      if ( dist2end<10.0 ) {
+	for (int i=0; i<3; i++)
+	  pathdir_back[i] = (pos[i]-end[i])/dist2end;
+      }
+    }
+    
+    std::cout << "front dir: (" << pathdir_front[0] << "," << pathdir_front[1] << "," << pathdir_front[2] << ")" << std::endl;
+    std::cout << "back dir:  (" << pathdir_back[0] << "," << pathdir_back[1] << "," << pathdir_back[2] << ")" << std::endl;    
+
+    PastClusterInfo_t& info = m_past_info.back();    
+    bool usefront = true; // if false use back
     float tick_start = start[0]/cm_per_tick + 3200.0;
     float tick_end   = end[0]/cm_per_tick   + 3200.0;
+    std::cout << "front tick: " << tick_start << std::endl;
+    std::cout << "back tick:  " << tick_end << std::endl;
+    
+    // use voting system, where we pick the end point that is closest to the edges of the different plane bounds determined by contour collection
+    float tick_dist_start = 0;
+    float tick_dist_end   = 0;
+    // for the start and end point, we add the shortest distance to cluster boundaries for each plane
+    // distance for now is just the row distance
+    for ( int p=0; p<3; p++) {
+      const larcv::ImageMeta& meta = img_v[p].meta();
+      if ( cluster.m_plane_rowminmax[p][0]<0 || cluster.m_plane_rowminmax[p][1]<0 )
+	continue; // nothing good here
+      float cluster_rowmintick = meta.pos_y( cluster.m_plane_rowminmax[p][0] );
+      float cluster_rowmaxtick = meta.pos_y( cluster.m_plane_rowminmax[p][1] );
+      std::cout << "plane tick bounds [" << cluster_rowmaxtick << "," << cluster_rowmintick << "]" << std::endl;
+
+      float start_dmin = fabs(cluster_rowmintick-tick_start);
+      float start_dmax = fabs(cluster_rowmaxtick-tick_start);
+      if ( start_dmin<start_dmax )
+	tick_dist_start += start_dmin;
+      else
+	tick_dist_start += start_dmax;
+
+      float end_dmin = fabs(cluster_rowmintick-tick_end);
+      float end_dmax = fabs(cluster_rowmaxtick-tick_end);
+      if ( end_dmin<end_dmax )
+	tick_dist_end += end_dmin;
+      else
+	tick_dist_end += end_dmax;
+    }
+
+    std::cout << "front tick total dist: " << tick_dist_start << std::endl;
+    std::cout << "back tick total dist:  " << tick_dist_end << std::endl;    
+
+    if ( tick_dist_start<tick_dist_end )
+      usefront = true;
+    else
+      usefront = false;
+    
+    // determine if we use front or back end point for boundary end point position and direction
+    /*
+      // here we were using directions/dwall -- ambiguous
+    if ( pt.type()<larlitecv::kAnode ) {
+      float fdwall_start = dspecificwall( cluster.m_path3d.front(), pt.type() );
+      float fdwall_end   = dspecificwall( cluster.m_path3d.back(),  pt.type() );
+      std::cout << "side tag (" << pt.type() << "): dwall start=" << fdwall_start << " dwall end=" << fdwall_end << std::endl;
+
+      // determine endpt from dir
+      bool gooddecision_fromdir = false;
+      bool usefront_fromdir   = true;
+      if ( pt.type()==larlitecv::kTop ) {
+	if ( pathdir_front[1]<0 ) {
+	  usefront_fromdir = true;
+	  gooddecision_fromdir = true;
+	}
+	else if ( pathdir_back[1]<0 ) {
+	  usefront_fromdir = false;
+	  gooddecision_fromdir = true;
+	}
+	else
+	  gooddecision_fromdir = false;
+      }
+      else if ( pt.type()==larlitecv::kBottom ) {
+	if ( pathdir_front[1]>0 ) {
+	  usefront_fromdir = true;
+	  gooddecision_fromdir = true;
+	}
+	else if ( pathdir_back[1]>0 ) {
+	  usefront_fromdir = false;
+	  gooddecision_fromdir = true;
+	}
+	else
+	  gooddecision_fromdir = false;
+      }
+      else if ( pt.type()==larlitecv::kUpstream ) {
+	if ( pathdir_front[2]>0 ) {
+	  usefront_fromdir = true;
+	  gooddecision_fromdir = true;
+	}
+	else if ( pathdir_back[2]>0 ) {
+	  usefront_fromdir = false;
+	  gooddecision_fromdir = true;
+	}
+	else
+	  gooddecision_fromdir = false;
+      }
+      else if ( pt.type()==larlitecv::kDownstream ) {
+	if ( pathdir_front[2]<0 ) {
+	  usefront_fromdir = true;
+	  gooddecision_fromdir = true;
+	}
+	else if ( pathdir_back[2]<0 ) {
+	  usefront_fromdir = false;
+	  gooddecision_fromdir = true;
+	}
+	else
+	  gooddecision_fromdir = false;
+      }
+      
+      // use dwall
+      bool usefront_fromdwall = true;
+      if ( fdwall_start<fdwall_end )
+	usefront_fromdwall = true;
+      else
+	usefront_fromdwall = false;
+
+      // how to decide based on these two metrics
+
+      // no ambiguity
+      if ( usefront_fromdwall && usefront_fromdir )
+	usefront = true;
+      else if ( !usefront_fromdwall && !usefront_fromdir )
+	usefront = false;
+      else {
+	// ambiguity can happen for cathode/anode crossings close to the wall...
+	usefront = usefront_fromdir; // this is a hack until I can think of something better
+      }
+    }
+    else if ( pt.type()==larlitecv::kAnode ) {
+      if ( cluster.m_path3d.front()[0]<cluster.m_path3d.back()[0] )
+	usefront = true;
+      else
+	usefront = false;
+    }
+    else if ( pt.type()==larlitecv::kCathode ) {
+      if ( cluster.m_path3d.front()[0]<cluster.m_path3d.back()[0] )
+	usefront = false;
+      else
+	usefront = true;
+    }
+    else {
+      // image end. use end closest to the original position
+      float dist2end   = 0;
+      float dist2start = 0;
+      for (int i=0; i<3; i++) {
+	dist2end   += ( cluster.m_path3d.back()[i]-pt.pos()[i] )*( cluster.m_path3d.back()[i]-pt.pos()[i] );
+	dist2start += ( cluster.m_path3d.front()[i]-pt.pos()[i] )*( cluster.m_path3d.front()[i]-pt.pos()[i] );	
+      }
+      dist2end = sqrt(dist2end);
+      dist2start = sqrt(dist2start);
+      if ( dist2start<dist2end )
+	usefront = true;
+      else
+	usefront = false;
+    }
+    */
+    
+    if ( usefront ) {
+      for (int i=0; i<3; i++)
+	info.dir[i] = pathdir_front[i];
+      info.pos = start;
+    }
+    else {
+      // use the end
+      for (int i=0; i<3; i++)
+	info.dir[i] = pathdir_back[i];
+      info.pos = end;
+    }
+    
+    // good cluster with 3D-consistent track found. evaluate goodness.
+    // ---------------------------------------------------------------
 
     m_last_clusters.emplace_back( std::move(cluster) );
     
@@ -270,8 +471,8 @@ namespace larlitecv {
 	isp++;   // counter for sp index of this vector
 
 	// debug: select event
-	// if (ireco!=12)
-	//   continue;
+	// if (ireco!=13)
+	//  continue;
 	
 	if ( sp.type()==larlitecv::kTop
 	     || sp.type()==larlitecv::kBottom
@@ -282,8 +483,9 @@ namespace larlitecv {
 	     || sp.type()==larlitecv::kImageEnd
 	     ) {
 	  // debug select boundary type
-	//if ( sp.type()==larlitecv::kAnode ) {
-	  
+	  //if ( sp.type()==larlitecv::kAnode ) {
+
+	  // clear the cluster vector
 	  clearClusters();
 	  
 	  int tot_flashidx = sp.getFlashIndex();
@@ -326,6 +528,9 @@ namespace larlitecv {
 	    continue;
 	  }
 
+	  // if we got this far, we passed
+	  if ( passes )
+	    m_past_info.back().passed = 1;
 	  
 	  const larlitecv::RecoCrossingPointAna_t* recoinfo   = NULL;
 	  const larlitecv::TruthCrossingPointAna_t* truthinfo = NULL;
@@ -347,6 +552,7 @@ namespace larlitecv {
 	    
 	    if ( recoinfo->truthmatch==1 ) {
 	      truthmatched = true;
+	      m_past_info.back().truthmatched = 1;
 	      const larlitecv::TruthCrossingPointAna_t* truthinfo = NULL;
 	      try {
 		truthinfo = &(m_truthinfo_ptr_v->at(recoinfo->truthmatch_index));
@@ -376,6 +582,7 @@ namespace larlitecv {
 	      }
 	    }//end if reco is truth matched
 	    else {
+	      m_past_info.back().truthmatched = 0;
 	      // bad reco point
 	      if ( passes ) {
 		passes_v[isp] = 1;	  
@@ -481,6 +688,30 @@ namespace larlitecv {
     m_stage_times[kOverall] += float(end_overall-begin_overall)/CLOCKS_PER_SEC;
     
   }
+
+  std::vector< larlitecv::BoundarySpacePoint >  CACAEndPtFilter::regenerateFitleredBoundaryPoints( const std::vector<larcv::Image2D>& img_v ) {
+
+    std::vector< larlitecv::BoundarySpacePoint > filteredsp_v;
+    
+    for ( auto const& pastinfo : m_past_info ) {
+      larlitecv::BoundarySpacePoint sp( (larlitecv::BoundaryEnd_t)pastinfo.type, pastinfo.pos, pastinfo.dir, img_v.front().meta() );
+
+      if ( fMakeDebugImage ) {
+	const larcv::ImageMeta& meta = img_v.front().meta();
+	int img_index = 0;
+	if ( pastinfo.truthmatched==0 )
+	  img_index = 1;
+	cv::Scalar ptcolor(0,255,0,255);
+	for (int p=0; p<3; p++)
+	  cv::circle(  m_cvimg_rgbdebug[img_index], cv::Point( sp[p].col, sp[p].row ), 3, ptcolor, 1 );
+      }
+      
+      filteredsp_v.emplace_back( std::move(sp) );
+    }
+    
+    return filteredsp_v;
+  }
+
   
   void CACAEndPtFilter::setTruthInformation( const std::vector<larlitecv::TruthCrossingPointAna_t>& truthinfo, const std::vector<larlitecv::RecoCrossingPointAna_t>& recoinfo ) {
     m_truthinfo_ptr_v = &truthinfo;
@@ -488,7 +719,7 @@ namespace larlitecv {
     fTruthInfoLoaded = true;
   }
 
-  bool CACAEndPtFilter::isDuplicateEndPoint( const larlitecv::ContourAStarCluster& seedcluster ) {
+  bool CACAEndPtFilter::isDuplicateEndPoint( const larlitecv::ContourAStarCluster& seedcluster, const larlitecv::BoundarySpacePoint& sp ) {
     // checks the seed cluster against previous clusters.
     // if plane contours a subset of other contour clusters, then a duplicate
     std::cout << "  duplicate check. number of past clusters=" << m_last_clusters.size() << std::endl;
@@ -527,7 +758,12 @@ namespace larlitecv {
 
     // didn't overlap with any, not a duplicate
     // make a past info
-    m_past_info.push_back( PastClusterInfo_t(seedcluster) );
+    PastClusterInfo_t info(seedcluster);
+    info.type = (int)sp.type();
+    info.flashindex = sp.getFlashIndex();
+
+
+    m_past_info.emplace_back( std::move(info) );
     return false;
   }
 

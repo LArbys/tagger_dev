@@ -6,7 +6,7 @@
 // larcv
 #include "DataFormat/Image2D.h"
 
-#include "ContourShapeMeta.h"
+#include "TaggerContourTools/ContourShapeMeta.h"
 #include "ContourCluster.h"
 
 #ifdef USE_OPENCV

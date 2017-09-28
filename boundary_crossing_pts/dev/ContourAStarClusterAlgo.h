@@ -53,6 +53,8 @@ namespace larlitecv {
     int m_nplanes;
     int m_current_min;
     int m_current_max;
+    std::vector< std::vector<int> > m_plane_rowminmax;
+    std::vector< std::vector<int> > m_plane_colminmax;    
     bool fMakeDebugImage;
 
     void setImageMeta( const std::vector<larcv::Image2D>& img_v ); // set the size of the containers which have storage for each plane

@@ -153,16 +153,30 @@ namespace larlitecv {
     int min_row = -1;
     int max_row = -1;
 
+    m_plane_rowminmax.resize(m_nplanes);
+
     
     for (int p=0; p<m_nplanes; p++) {
+      m_plane_rowminmax[p].resize(2,-1);
+      int planemin = -1;
+      int planemax = -1;
       for ( auto& ctr : m_current_contours[p] ) {
-	
+
+	// total maxi-min mini-max to determine overlap
 	if ( min_row < ctr.getMinY() || min_row<0 )
 	  min_row = ctr.getMinY();
 
 	if ( max_row > ctr.getMaxY() || max_row<0 )
 	  max_row = ctr.getMaxY();
+
+	// plane abs min and max to get extent of clusters in this plane
+	if ( planemin>ctr.getMinY() || planemin<0 )
+	  planemin = ctr.getMinY();
+	if ( planemax<ctr.getMaxY() || planemax<0 )
+	  planemax = ctr.getMaxY();
       }
+      m_plane_rowminmax[p][0] = planemin;
+      m_plane_rowminmax[p][1] = planemax;
     }
 
     std::vector<int> range(2);
@@ -360,8 +374,6 @@ namespace larlitecv {
       for (int p=0; p<3; p++) {
 	cv::circle( cluster.m_cvimg_debug, cv::Point(seed_imgcoord[p+1], seed_imgcoord[0]), 3, cv::Scalar(0,255,255), 1 );
       }
-      std::cout << "Wrote seed cluster image and time bounds" << std::endl;
-      cv::imwrite( "boundaryptimgs/astarcluster_seedcluster.png", cluster.m_cvimg_debug );
     }
     
     // we scan at the time range for a good 3D point (or points?)
@@ -394,6 +406,17 @@ namespace larlitecv {
     astar_cfg.astar_end_padding = 3;
     astar_cfg.lattice_padding = 3;
     // ----------------------------------------
+
+
+    if ( fMakeDebugImage ) {
+      for (int p=0; p<3; p++) {
+	cv::circle( cluster.m_cvimg_debug, cv::Point(min_imgcoords[p+1], min_imgcoords[0]), 3, cv::Scalar(255,0,255), 1 );
+	cv::circle( cluster.m_cvimg_debug, cv::Point(max_imgcoords[p+1], max_imgcoords[0]), 3, cv::Scalar(255,0,255), 1 );	
+      }
+      
+      std::cout << "Wrote seed cluster image and time bounds" << std::endl;
+      cv::imwrite( "boundaryptimgs/astarcluster_seedcluster.png", cluster.m_cvimg_debug );      
+    }
     
     // now we enter the buiding loop
     int iloop = 0;

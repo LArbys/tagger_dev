@@ -1,6 +1,8 @@
 import os,sys
 import ROOT as rt
 
+rt.gStyle.SetOptStat(0)
+
 anafile = "output_crossingpt_ana_test.root"
 if len(sys.argv)>=2:
     anafile = sys.argv[1]
@@ -9,6 +11,7 @@ rfile = rt.TFile(anafile, "OPEN")
 
 treenames = [("prefilter","mcxingptana_prefilter"),("postfilter","mcxingptana_postfilter")]
 hists = {}
+endptnames = ["top","bottom","upstream","downstream","anode","cathode","imgends","tot"]
 
 # ------------------------------------------------------------------
 # Canvases
@@ -86,6 +89,22 @@ for name,treename in treenames:
 
 # PLOT
 
+# distance of true point to nearest reco
+for n in range(0,8):
+    cdist.cd(n+1)
+    hpre = hists[("prefilter","dist")][n]
+    hpre.SetTitle(endptnames[n])
+    hpre.SetLineColor(rt.kBlack)
+    hpre.SetLineWidth(2)
+    hpre.Draw()
+    hpost = hists[("postfilter","dist")][n]
+    hpost.SetLineColor(rt.kRed)
+    hpost.SetLineWidth(2)    
+    hpost.Draw("same")
+cdist.Update()
+    
+
+
 # position
 cpos.Draw()
 for n,x in enumerate(["x","y","z"]):
@@ -124,9 +143,10 @@ print "Filled Truth-level crossings"
 rtree = rfile.Get( "recoxingptana" )
 
 # RECO TYPE
-crecotype = rt.TCanvas("crecotype","Reco End point type", 1400, 400)
+crecotype = rt.TCanvas("crecotype","Purity for Reco End Points", 1400, 400)
 crecotype.Draw()
 crecotype.Divide(2,1)
+# fill hists
 crecotype.cd(1)
 hrecotype_totaled  = rt.TH1D("hrecotype_totaled", "",7,0,7)
 hrecotype_matched  = rt.TH1D("hrecotype_matched", "",7,0,7)
@@ -140,6 +160,7 @@ rtree.Draw("type>>hrecotype_filtered", "passes==1") # all that passes
 rtree.Draw("type>>hrecotype_filtpass", "matched==1 && passes==1") # matched and passes
 rtree.Draw("type>>hrecotype_ratio",   "matched==1")
 rtree.Draw("type>>hrecotype_ratiofil", "matched==1 && passes==1")
+
 hrecotype_totaled.SetMinimum(0)
 hrecotype_totaled.Draw()
 hrecotype_matched.Draw("same")
@@ -150,14 +171,22 @@ hrecotype_ratiofil.SetLineColor(rt.kRed )
 hrecotype_ratio.Divide( hrecotype_totaled )
 hrecotype_ratiofil.Divide( hrecotype_filtered )
 
-
+trecolen = rt.TLegend(0.1,0.8, 0.5, 0.6)
+hrecotype_totaled.SetTitle("Number of Reco. Points")
 hrecotype_totaled.Draw()
 hrecotype_matched.Draw("same")
 hrecotype_filtered.Draw("same")
 hrecotype_filtpass.Draw("same")
+trecolen.AddEntry( hrecotype_totaled,"All Reco.","L")
+trecolen.AddEntry( hrecotype_matched,"Truth Matched","L")
+trecolen.AddEntry( hrecotype_filtered,"Filtered","L")
+trecolen.AddEntry( hrecotype_filtpass,"Filtered+Matched","L")
+trecolen.Draw()
 
+# purity
 crecotype.cd(2)
 hrecotype_ratio.GetYaxis().SetRangeUser(0,1)
+hrecotype_ratio.SetTitle("Reco. End Pt. Purity")
 hrecotype_ratio.Draw()
 hrecotype_ratiofil.Draw("same")
 crecotype.Update()

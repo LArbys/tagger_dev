@@ -744,6 +744,8 @@ int main( int nargs, char** argv ) {
       cacaalgo.makeDebugImage();
     cacaalgo.evaluateEndPoints( prefilter_spacepoints_v, event_opflash_v, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, 17.0, 20.0, 150.0, caca_results );
     std::vector<larlitecv::BoundarySpacePoint> cacapassing_spacepoints_v;
+    std::vector<larlitecv::BoundarySpacePoint> cacapassing_moved_v = cacaalgo.regenerateFitleredBoundaryPoints( imgs_v );
+    
     std::vector<int> cacapasses_unrolled;
     ireco = -1;
     for (size_t iv=0; iv<prefilter_spacepoints_v.size(); iv++) {
@@ -761,6 +763,7 @@ int main( int nargs, char** argv ) {
     }
 
     if ( makeCACADebugImage ) {
+
       std::stringstream path;
       path << "boundaryptimgs/astarcluster_goodrecopts_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
       cv::imwrite( path.str(), cacaalgo.getDebugImage(0) );
