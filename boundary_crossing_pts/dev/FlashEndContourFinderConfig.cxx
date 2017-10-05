@@ -17,7 +17,7 @@ namespace larlitecv {
     max_triarea = 10.0;
     cathode_drift_tick_correction = -90.0;
     anode_drift_tick_correction   = 18.0;
-    
+    make_debug_image = false;
   }
 
   
@@ -36,6 +36,7 @@ namespace larlitecv {
     flashtagger_cfg.max_triarea                  = flashtagger_pset.get< float >( "MaxTriArea", 10.0 );
     flashtagger_cfg.cathode_drift_tick_correction = flashtagger_pset.get< float >( "CathodeDriftTickCorrection" );
     flashtagger_cfg.anode_drift_tick_correction  = flashtagger_pset.get< float >( "AnodeDriftTickCorrection" );
+    flashtagger_cfg.make_debug_image             = flashtagger_pset.get< bool >( "MakeDebugImage", false );
     return flashtagger_cfg;
   }
 

@@ -28,3 +28,18 @@
 [submodule "flashandcharge_trackselect/Geo2D"]
 	path = flashandcharge_trackselect/Geo2D
 	url = http://github.com/LArbys/Geo2D
+[submodule "v2/larlite"]
+	path = v2/larlite
+	url = http://github.com/larlight/larlite
+[submodule "v2/Geo2D"]
+	path = v2/Geo2D
+	url = https://github.com/larbys/geo2d
+[submodule "v2/LArCV"]
+	path = v2/LArCV
+	url = https://github.com/larbys/larcv
+[submodule "v2/larlitecv"]
+	path = v2/larlitecv
+	url = https://github.com/larbys/larlitecv
+[submodule "v2/LArOpenCV"]
+	path = v2/LArOpenCV
+	url = https://github.com/nevisub/laropencv

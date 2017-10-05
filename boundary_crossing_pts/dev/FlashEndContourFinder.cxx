@@ -8,19 +8,21 @@
 
 // larcv
 #include "UBWireTool/UBWireTool.h"
+#include "CVUtil/CVUtil.h"
+
 
 namespace larlitecv {
 
   FlashEndContourFinder::FlashEndContourFinder( SearchMode_t mode, const FlashEndContourFinderConfig& config )
     : fSearchMode(mode),fNPMTs(32),fConfig(config)
   {
-
+    fMakeDebugImage = fConfig.make_debug_image;
   }
 
   FlashEndContourFinder::FlashEndContourFinder( SearchMode_t mode, const larcv::PSet& pset )
     : fSearchMode(mode),fNPMTs(32),fConfig( FlashEndContourFinderConfig::FromPSet( pset ) )
   {
-    
+    fMakeDebugImage = fConfig.make_debug_image;
   }
 
   bool FlashEndContourFinder::flashMatchTrackEnds( const std::vector< larlite::event_opflash* >& opflash_vv, 
@@ -56,6 +58,25 @@ namespace larlitecv {
       for ( int i=0; i<(int)opflash_vv.size(); i++) {
 	std::cout << "    #" << i << ": " << opflash_vv[i]->size() << " flashes" << std::endl;
       }
+    }
+
+    // if making debug image
+    if ( fMakeDebugImage ) {
+      m_cvimg_debug.clear();
+      
+      // RGB Image serves as our debug image
+      cv::Mat cvimg = larcv::as_mat_greyscale2bgr( img_v.front(), 0, 255.0 );
+      for (size_t p=1; p<img_v.size(); p++) {
+	for (size_t r=0; r<img_v[p].meta().rows(); r++) {
+	  for (size_t c=0; c<img_v[p].meta().cols(); c++) {
+	    if ( img_v[p].pixel(r,c)>5.0 ) {
+	      for (int i=0; i<3; i++)
+		cvimg.at<cv::Vec3b>(cv::Point(c,r))[i] = img_v[p].pixel(r,c);
+	    }
+	  }
+	}
+      }
+      m_cvimg_debug.emplace_back(std::move(cvimg));
     }
     
     // get a meta
@@ -256,7 +277,7 @@ namespace larlitecv {
 
     const larcv::ImageMeta& meta = img_v.front().meta();
 
-    int row = (int)meta.rows();
+    int row = (int)meta.row(tick);
 
     // get list of contours for each plane
     // and store info on where the tick crosses the contour
@@ -275,6 +296,24 @@ namespace larlitecv {
     std::vector< std::vector<float> > candidate_tyz_points_v;
     findCandidateSpacePoints( plane_xing_v, row, img_v, badch_v, candidate_tyz_points_v );
 
+    std::cout << "  Candidate end points @ row=" << row << ", tick=" << tick << ": " << candidate_tyz_points_v.size() << std::endl;
+    
+    if ( fMakeDebugImage ) {
+      // mark the flash tick we searched for
+      cv::line( m_cvimg_debug.front(), cv::Point(0,row), cv::Point(img_v.front().meta().cols(),row), cv::Scalar(255,255,0,255), 1 );
+      
+      // we mark the debug image with locations for the candidate points
+      for ( auto const& tyz : candidate_tyz_points_v ) {
+	int cand_row = img_v.front().meta().row(tyz[0]);
+	std::vector<int> imgcoord = larcv::UBWireTool::getProjectedImagePixel( tyz, img_v.front().meta(), img_v.size() );
+	imgcoord[0] = cand_row;
+	for (size_t p=0; p<img_v.size(); p++) {
+	  cv::circle( m_cvimg_debug.front(), cv::Point(imgcoord[p+1], row), 3, cv::Scalar(0,255,255,255), 1 );
+	}
+      }
+      
+    }
+    
     // we feed this to the contour end point finding machinery
     
     return true;
@@ -382,11 +421,14 @@ namespace larlitecv {
     
     // check if planes make sense
     int plane3 = -1;
-    if ( plane1==0 && plane1==1 ) plane3==2;
-    else if (plane1==0 && plane1==2) plane3==1;
+    if ( plane1==0 && plane2==1 ) plane3==2;
+    else if (plane1==0 && plane2==2) plane3==1;
     else if (plane1==1 && plane2==2) plane3==0;
     else {
-      throw std::runtime_error("find3dpoint: unrecognized plane combination");
+      std::stringstream msg;
+      msg << __FILE__ << ":" << __LINE__ << ": unrecognized plane combination.";
+      msg << " plane1=" << plane1 << " plane2=" << plane2 << std::endl;
+      throw std::runtime_error(msg.str());
     }
 
     pos3d.resize(3,-1);

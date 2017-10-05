@@ -33,8 +33,7 @@ namespace larlitecv {
     float               max_triarea_tight;
     float               cathode_drift_tick_correction;
     float               anode_drift_tick_correction;
-
-    
+    bool                make_debug_image;
 
     void setdefaults();
 

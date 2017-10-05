@@ -70,6 +70,8 @@
 // dev
 #include "BMTContourFilterAlgo.h"
 #include "ContourClusterAlgo.h"
+#include "FlashEndContourFinderConfig.h"
+#include "FlashEndContourFinder.h"
 
 
 int main( int nargs, char** argv ) {
@@ -129,6 +131,7 @@ int main( int nargs, char** argv ) {
   float fthreshold       = pset.get<float>("PixelThreshold");
   float max_dist2contour = pset.get<float>("MaxDist2Contour");
   bool makeCACADebugImage = pset.get<bool>("MakeCACADebugImage");
+  std::string fFlashEndFinder = pset.get<std::string>("FlashEndFinder");
   std::vector<float> thresholds_v( 3, fthreshold );
   std::vector<float> label_thresholds_v( 3, -10 );  
   std::vector<int> label_neighborhood(3,0);
@@ -203,6 +206,7 @@ int main( int nargs, char** argv ) {
   }
 
   // results from point of view of reco. true versus false positives.
+  int ireco = 0;
   float reco_mindist2true = 0;
   int   reco_nplaneswcharge = 0;
   int   reco_type  = 0;
@@ -236,6 +240,13 @@ int main( int nargs, char** argv ) {
   fmt_anode.configure( fmt_cfg );
   fmt_cathode.configure( fmt_cfg );
   fmt_imageend.configure( fmt_cfg );
+
+
+  larcv::PSet flashctr_pset = pset.get<larcv::PSet>("FlashContourTagger");
+  larlitecv::FlashEndContourFinderConfig flashctr_cfg = larlitecv::FlashEndContourFinderConfig::FromPSet( flashctr_pset );
+  larlitecv::FlashEndContourFinder flashctr_anode( larlitecv::FlashEndContourFinder::kAnode, flashctr_cfg );
+  larlitecv::FlashEndContourFinder flashctr_cathode( larlitecv::FlashEndContourFinder::kCathode, flashctr_cfg );
+  larlitecv::FlashEndContourFinder flashctr_imgends( larlitecv::FlashEndContourFinder::kOutOfImage, flashctr_cfg );
 
   // BMT CV
   larlitecv::BMTCV bmtcv_algo;
@@ -462,6 +473,11 @@ int main( int nargs, char** argv ) {
 #endif
       
     } // end of MC functions   
+
+    // =======================================================================
+    // BMTCV: Contour analysis of entire image
+    bmtcv_algo.analyzeImages( imgs_v, badch_v, 10.0, 2 );
+
     
     // =======================================================================
     // RUN RECO ALGO
@@ -515,13 +531,30 @@ int main( int nargs, char** argv ) {
     // run flash tagger
     std::vector< larlitecv::BoundarySpacePoint > anode_spacepoint_v;
     std::vector< int > anode_flash_idx_v;
+    std::vector< int > anode_endtype_idx_v;
     std::vector< larlitecv::BoundarySpacePoint > cathode_spacepoint_v;
     std::vector< int > cathode_flash_idx_v;
+    std::vector< int > cathode_endtype_idx_v;    
     std::vector< larlitecv::BoundarySpacePoint > imgends_spacepoint_v;
     std::vector< int > imgends_flash_idx_v;
-    fmt_anode.flashMatchTrackEnds(   event_opflash_v, imgs_v, badch_v, anode_spacepoint_v, anode_flash_idx_v );
-    fmt_cathode.flashMatchTrackEnds( event_opflash_v, imgs_v, badch_v, cathode_spacepoint_v, cathode_flash_idx_v );
-    fmt_imageend.findImageTrackEnds( imgs_v, badch_v, imgends_spacepoint_v, imgends_flash_idx_v );
+    std::vector< int > imgends_endtype_idx_v;
+    if ( fFlashEndFinder=="Segment" ) {
+      fmt_anode.flashMatchTrackEnds(   event_opflash_v, imgs_v, badch_v, anode_spacepoint_v, anode_flash_idx_v, anode_endtype_idx_v );
+      fmt_cathode.flashMatchTrackEnds( event_opflash_v, imgs_v, badch_v, cathode_spacepoint_v, cathode_flash_idx_v, cathode_endtype_idx_v );
+      fmt_imageend.findImageTrackEnds( imgs_v, badch_v, imgends_spacepoint_v, imgends_flash_idx_v, imgends_endtype_idx_v );
+    }
+    else if ( fFlashEndFinder=="Contour" ) {
+      flashctr_anode.flashMatchTrackEnds(   event_opflash_v, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, anode_spacepoint_v,   anode_flash_idx_v );
+      flashctr_cathode.flashMatchTrackEnds( event_opflash_v, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, cathode_spacepoint_v, cathode_flash_idx_v );
+      flashctr_imgends.flashMatchTrackEnds( event_opflash_v, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, imgends_spacepoint_v, imgends_flash_idx_v );
+
+      if ( flashctr_cfg.make_debug_image ) {
+	cv::imwrite( "boundaryptimgs/flashcontour_anode.png",   flashctr_anode.getDebugImages()[0] );
+	cv::imwrite( "boundaryptimgs/flashcontour_cathode.png", flashctr_cathode.getDebugImages()[0] );
+	cv::imwrite( "boundaryptimgs/flashcontour_imgends.png", flashctr_imgends.getDebugImages()[0] );		
+      }
+      
+    }
     int totalflashes = (int)anode_spacepoint_v.size() + (int)cathode_spacepoint_v.size() + (int)imgends_spacepoint_v.size();
     std::cout << "Reco Flash Tagger End Points: " << totalflashes << std::endl;
     std::cout << "  Anode: "      << anode_spacepoint_v.size() << std::endl;
@@ -531,6 +564,8 @@ int main( int nargs, char** argv ) {
     for (int i=0; i<(int)anode_spacepoint_v.size(); i++) {
       std::cout << "    [" << i << "] flashidx=" << anode_spacepoint_v.at(i).getFlashIndex() << std::endl;
     }
+
+    assert(false);
     
     // we collect pointers to all the end points
     std::vector< const larlitecv::BoundarySpacePoint* > all_endpoints;
@@ -591,11 +626,10 @@ int main( int nargs, char** argv ) {
       
     // --------------------------------------------------------------------------------
     // RECO DEV:
-    // BMTCV
-    bmtcv_algo.analyzeImages( imgs_v, badch_v, 10.0, 2 );
 
     // RECO DEV: Contour-based Filters
-    
+
+    /*
     // Pass Truth End points through the filter    
     larlitecv::BMTContourFilterAlgo contour_truthfilter_algo;
     std::vector<larcv::Image2D> truthfilter_clusterpix_v;
@@ -729,6 +763,7 @@ int main( int nargs, char** argv ) {
     std::cout << "    cathode: " << numreco_bad[5][0] << "/" << numreco_bad[5][1] << std::endl;
     std::cout << "    imgends: " << numreco_bad[6][0] << "/" << numreco_bad[6][1] << std::endl;                
     std::cout << "--------------------------------------------------- " << std::endl;
+    */
     
     // ===============================================================================================================
     //  DEV: ContourAStarCluster
@@ -740,7 +775,8 @@ int main( int nargs, char** argv ) {
     std::vector< std::vector<int> > caca_results;
     larlitecv::CACAEndPtFilter cacaalgo;
     cacaalgo.setVerbosity(2);
-    cacaalgo.setTruthInformation( xingptdata_prefilter.truthcrossingptinfo_v, xingptdata_prefilter.recocrossingptinfo_v );
+    if ( ismc )
+      cacaalgo.setTruthInformation( xingptdata_prefilter.truthcrossingptinfo_v, xingptdata_prefilter.recocrossingptinfo_v );
     if ( makeCACADebugImage )
       cacaalgo.makeDebugImage();
     cacaalgo.evaluateEndPoints( prefilter_spacepoints_v, event_opflash_v, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, 150.0, caca_results );
@@ -765,6 +801,20 @@ int main( int nargs, char** argv ) {
 
     if ( makeCACADebugImage ) {
 
+      // fill in badch
+      for (int p=0; p<3; p++) {
+	cv::Mat& debuggood = cacaalgo.getDebugImage(0);
+	cv::Mat& debugbad  = cacaalgo.getDebugImage(1);
+	for (size_t col=0; col<imgs_v.front().meta().cols(); col++) {
+	  if ( badch_v[p].pixel( 10, col )>0 ) {
+	    for (size_t row=0; row<imgs_v.front().meta().rows(); row++) {
+	      debuggood.at<cv::Vec3b>( cv::Point(col,row) )[p] = 10;
+	      debugbad.at<cv::Vec3b>(  cv::Point(col,row) )[p] = 10;	      
+	    }
+	  }
+	}
+      }
+      
       std::stringstream path;
       path << "boundaryptimgs/astarcluster_goodrecopts_r" << run << "_s" << subrun << "_e" << event << "_p" << 4 << ".png";
       cv::imwrite( path.str(), cacaalgo.getDebugImage(0) );
@@ -972,7 +1022,8 @@ int main( int nargs, char** argv ) {
 	  }
 	  int row=sp[0].row;
 	  cv::Scalar colour(125,125,255,255);
-	  if ( recofilter_passes[ireco]==0 )
+	  //if ( recofilter_passes[ireco]==0 )
+	  if ( cacapasses_unrolled[ireco]==0 )
 	    colour = cv::Scalar(255,125,125,255);
 	  cv::circle(  cvrealspace_v[sp.type()], cv::Point(x,row), 2, colour, -1.0 );
 	  cv::putText( cvrealspace_v[sp.type()], cv::String(ptname.str()), cv::Point( x+2, row+2 ), cv::FONT_HERSHEY_SIMPLEX, 0.3, colour );
