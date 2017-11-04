@@ -539,9 +539,9 @@ int main( int nargs, char** argv ) {
     std::vector< int > imgends_flash_idx_v;
     std::vector< int > imgends_endtype_idx_v;
     if ( fFlashEndFinder=="Segment" ) {
-      fmt_anode.flashMatchTrackEnds(   event_opflash_v, imgs_v, badch_v, anode_spacepoint_v, anode_flash_idx_v, anode_endtype_idx_v );
-      fmt_cathode.flashMatchTrackEnds( event_opflash_v, imgs_v, badch_v, cathode_spacepoint_v, cathode_flash_idx_v, cathode_endtype_idx_v );
-      fmt_imageend.findImageTrackEnds( imgs_v, badch_v, imgends_spacepoint_v, imgends_flash_idx_v, imgends_endtype_idx_v );
+      fmt_anode.flashMatchTrackEnds(   event_opflash_v, imgs_v, badch_v, anode_spacepoint_v );
+      fmt_cathode.flashMatchTrackEnds( event_opflash_v, imgs_v, badch_v, cathode_spacepoint_v );
+      fmt_imageend.findImageTrackEnds( imgs_v, badch_v, imgends_spacepoint_v );
     }
     else if ( fFlashEndFinder=="Contour" ) {
       flashctr_anode.flashMatchTrackEnds(   event_opflash_v, imgs_v, badch_v, bmtcv_algo.m_plane_atomicmeta_v, anode_spacepoint_v,   anode_flash_idx_v );
@@ -562,7 +562,7 @@ int main( int nargs, char** argv ) {
     std::cout << "  Image Ends: " << imgends_spacepoint_v.size() << std::endl;
     std::cout << "  Anode end points" << std::endl;    
     for (int i=0; i<(int)anode_spacepoint_v.size(); i++) {
-      std::cout << "    [" << i << "] flashidx=" << anode_spacepoint_v.at(i).getFlashIndex() << std::endl;
+      std::cout << "    [" << i << "] flashidx=" << anode_spacepoint_v.at(i).getFlashIndex().getInfo() << std::endl;
     }
 
     assert(false);
