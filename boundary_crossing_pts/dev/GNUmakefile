@@ -24,9 +24,9 @@ LDFLAGS += $(shell larlitecv-config --libs)
 LDFLAGS += `root-config --ldflags --libs`
 
 LIB=libCrossingPtsAna.so
-BINARIES = analyze_crossingpts bmt_unittest
+BINARIES = analyze_crossingpts bmt_unittest test_gapfill
 BINSRCS = $(addsuffix .cxx,$(BINARIES))
-SOURCES = ContourClusterAlgo.cxx ContourCluster.cxx ContourBuilderAlgo.cxx BMTContourFilterAlgo.cxx FlashEndContourFinderConfig.cxx FlashEndContourFinder.cxx
+SOURCES = ContourClusterAlgo.cxx ContourCluster.cxx ContourBuilderAlgo.cxx BMTContourFilterAlgo.cxx FlashEndContourFinderConfig.cxx FlashEndContourFinder.cxx ContourGapFill.cxx
 OBJS = $(SOURCES:.cxx=.o)
 
 all: $(LIB) $(BINARIES)
@@ -43,6 +43,9 @@ analyze_crossingpts: analyze_crossingpts.cxx $(LIB)
 	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LIB) $(LDFLAGS)
 
 bmt_unittest: bmt_unittest.cxx $(LIB)
+	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS) $(LIB)
+
+test_gapfill: test_gapfill.cxx $(LIB)
 	$(CXX) $(INCFLAGS) -o $@ $@.cxx $(LDFLAGS) $(LIB)
 
 clean:
