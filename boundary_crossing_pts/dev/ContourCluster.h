@@ -4,7 +4,7 @@
 #include <vector>
 #include <set>
 
-#include "ContourShapeMeta.h"
+#include "TaggerContourTools/ContourShapeMeta.h"
 
 #ifdef USE_OPENCV
 #include <opencv2/opencv.hpp>

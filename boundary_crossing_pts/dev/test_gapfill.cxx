@@ -137,6 +137,7 @@ int main( int nargs, char** argv ) {
     ss << "gapfillimgs/gapalgodebug_run" << run << "_subrun" << subrun << "_ev" << event << ".png";
     cv::imwrite( ss.str(), cvimg_v.front() );
     std::cout << "wrote: " << ss.str() << std::endl;
+
   }
   
     

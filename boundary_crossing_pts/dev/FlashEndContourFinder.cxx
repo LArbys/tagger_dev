@@ -85,11 +85,14 @@ namespace larlitecv {
     // uboone geometry data
     const larutil::Geometry* pgeo = larutil::Geometry::GetME();
 
+    int ivec = -1;
     int unrolled_flash_index = -1;
     int ntrackendpts = trackendpts.size();
     
     // loop over all the flash containers
     for ( auto& ptr_event_flash : opflash_vv ) {
+      ivec++;
+      
       // loop over flashes
       
       int opflash_idx = -1;
@@ -222,7 +225,7 @@ namespace larlitecv {
 
 	// add the unrolled flash index to the end point
 	for (int iendpt=ntrackendpts; iendpt<(int)trackendpts.size(); iendpt++) {
-	  trackendpts.at(iendpt).setFlashIndex( unrolled_flash_index );
+	  trackendpts.at(iendpt).setFlashIndex( ivec, opflash_idx, &opflash );
 	  std::cout << __FILE__ << ":" << __LINE__ << " set flash index=" << unrolled_flash_index << " (ntrackendpts=" << ntrackendpts << ")" << std::endl;
 	}
 	ntrackendpts = trackendpts.size();
