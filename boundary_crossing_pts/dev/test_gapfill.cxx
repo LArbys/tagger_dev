@@ -22,7 +22,7 @@
 #include "TaggerContourTools/BMTCV.h"
 #include "GapChs/EmptyChannelAlgo.h"
 
-#include "ContourGapFill.h"
+#include "TaggerContourTools/ContourGapFill.h"
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>

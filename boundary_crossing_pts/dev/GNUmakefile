@@ -26,7 +26,7 @@ LDFLAGS += `root-config --ldflags --libs`
 LIB=libCrossingPtsAna.so
 BINARIES = analyze_crossingpts bmt_unittest test_gapfill
 BINSRCS = $(addsuffix .cxx,$(BINARIES))
-SOURCES = ContourClusterAlgo.cxx ContourCluster.cxx ContourBuilderAlgo.cxx BMTContourFilterAlgo.cxx FlashEndContourFinderConfig.cxx FlashEndContourFinder.cxx ContourGapFill.cxx
+SOURCES = ContourClusterAlgo.cxx ContourCluster.cxx ContourBuilderAlgo.cxx BMTContourFilterAlgo.cxx FlashEndContourFinderConfig.cxx FlashEndContourFinder.cxx
 OBJS = $(SOURCES:.cxx=.o)
 
 all: $(LIB) $(BINARIES)
